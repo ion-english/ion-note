@@ -22,7 +22,7 @@ label{display:block;font-size:12.5px;color:#6b7690;margin:10px 0 4px}
 .list .fo{font-size:12.5px;font-weight:700;color:#5f6f8f;padding:12px 4px 4px;cursor:pointer;user-select:none}
 .list .fi{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;cursor:pointer}
 .list .fi:hover{background:#eef2fa}.list .fi .n{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.list .fi .m{font-size:12px;color:#8a94a8}
+.list .fi .x{color:#9aa3b5;font-size:18px;line-height:1;padding:2px 8px;border-radius:6px}.list .fi .x:hover{background:#e3e8f2;color:#c33}.list .fi .m{font-size:12px;color:#8a94a8}
 .empty{color:#8a94a8;padding:18px 4px;font-size:14px}
 #view{position:fixed;inset:0;display:none;flex-direction:column;background:#fff}
 #bar{height:40px;flex:none;display:flex;align-items:center;gap:10px;padding:0 10px;background:#1f3a5f;color:#fff}
@@ -76,9 +76,15 @@ $('setBtn').onclick=function(){fillSet();var c=$('setCard');c.style.display=c.st
 $('saveBtn').onclick=save;fillSet();
 if(!cfg.sk)$('setCard').style.display='block';
 /* ---------- 폴더 기억 (IndexedDB) ---------- */
-function idb(){return new Promise(function(r,j){var q=indexedDB.open('ion_app',1);q.onupgradeneeded=function(){q.result.createObjectStore('h')};q.onsuccess=function(){r(q.result)};q.onerror=j})}
+function idb(){return new Promise(function(r,j){var q=indexedDB.open('ion_app',2);q.onupgradeneeded=function(){var d=q.result;if(!d.objectStoreNames.contains('h'))d.createObjectStore('h');if(!d.objectStoreNames.contains('r'))d.createObjectStore('r')};q.onsuccess=function(){r(q.result)};q.onerror=j})}
 function hput(v){return idb().then(function(d){return new Promise(function(r){var t=d.transaction('h','readwrite');t.objectStore('h').put(v,'dir');t.oncomplete=r})})}
 function hget(){return idb().then(function(d){return new Promise(function(r){var q=d.transaction('h').objectStore('h').get('dir');q.onsuccess=function(){r(q.result)};q.onerror=function(){r()}})})}
+function rput(n,v){return idb().then(function(d){return new Promise(function(r){var t=d.transaction('r','readwrite');t.objectStore('r').put(v,n);t.oncomplete=r})})}
+function rget(n){return idb().then(function(d){return new Promise(function(r){var q=d.transaction('r').objectStore('r').get(n);q.onsuccess=function(){r(q.result)};q.onerror=function(){r()}})})}
+async function openHandle(h){
+  try{if(await h.queryPermission({mode:'read'})!=='granted'&&await h.requestPermission({mode:'read'})!=='granted')return;
+    openFile(await h.getFile(),h)}catch(e){alert('파일을 열 수 없습니다. 이동하거나 이름이 바뀌었을 수 있습니다.')}
+}
 async function scan(h,path,out,depth){
   for await(var e of h.values()){
     if(e.kind==='directory'){if(depth<4&&e.name[0]!=='.'&&!/^(node_modules|_files)$/.test(e.name))await scan(e,path?path+'/'+e.name:e.name,out,depth+1)}
@@ -112,18 +118,20 @@ function renderList(){
     if(f.dir!==last){last=f.dir;var fo=document.createElement('div');fo.className='fo';var d=f.dir;fo.textContent=(closedF[d]?'▸ ':'▾ ')+(d||'(최상위)');fo.onclick=function(){closedF[d]=!closedF[d];renderList()};L.appendChild(fo)}
     if(closedF[f.dir]&&!q)return;
     var it=document.createElement('div');it.className='fi';it.innerHTML='<span class="n"></span>';it.firstChild.textContent=f.name.replace(/\.html?$/i,'');
-    it.onclick=function(){f.h.getFile().then(openFile)};L.appendChild(it)
+    it.onclick=function(){openHandle(f.h)};L.appendChild(it)
   })
 }
 $('q').oninput=renderList;
 function renderRec(){
   $('recCard').style.display=recents.length?'block':'none';var R=$('rec');R.textContent='';
-  recents.slice(0,6).forEach(function(n){var it=document.createElement('div');it.className='fi';it.innerHTML='<span class="n"></span>';it.firstChild.textContent=n;
-    it.onclick=function(){var f=files.filter(function(x){return x.name===n})[0];if(f)f.h.getFile().then(openFile);else alert('폴더를 먼저 연결하세요.')};R.appendChild(it)})
+  recents.slice(0,6).forEach(function(n){var it=document.createElement('div');it.className='fi';it.innerHTML='<span class="n"></span><span class="x" title="목록에서 삭제">×</span>';it.firstChild.textContent=n;
+    it.lastChild.onclick=function(e){e.stopPropagation();recents=recents.filter(function(x){return x!==n});localStorage.setItem('ion_app_rec',JSON.stringify(recents));idb().then(function(d){d.transaction('r','readwrite').objectStore('r').delete(n)});renderRec()};
+    it.onclick=async function(){var h=await rget(n);if(h)openHandle(h);else{var f=files.filter(function(x){return x.name===n})[0];if(f)openHandle(f.h);else alert('이 자료는 파일 선택 창으로 다시 열어 주세요.')}};R.appendChild(it)})
 }
 /* ---------- 열기 (ION 자동 주입) ---------- */
 function docName(n){return n.replace(/\.html?$/i,'').replace(/\s*\(\d+\)$/,'')}
-async function openFile(file){
+async function openFile(file,handle){
+  if(handle)rput(file.name,handle);
   var html=await file.text(),name=docName(file.name);
   var s='<script src="'+cfg.ju.replace(/"/g,'&quot;')+'" data-doc="'+name.replace(/"/g,'&quot;')+'"'+
     (cfg.sk?' data-supabase-url="'+cfg.su+'" data-supabase-key="'+cfg.sk+'"':'')+'><\/script>';
@@ -135,7 +143,7 @@ async function openFile(file){
 }
 $('back').onclick=function(){$('view').style.display='none';$('home').style.display='block';$('fr').srcdoc='';renderRec()};
 window.addEventListener('message',function(e){if(e.data==='home')$('back').click()});
-$('one').onclick=function(){$('fi').click()};
+$('one').onclick=async function(){if(window.showOpenFilePicker){try{var a=await showOpenFilePicker({types:[{description:'HTML',accept:{'text/html':['.html','.htm']}}]});openHandle(a[0])}catch(e){}}else $('fi').click()};
 $('fi').onchange=function(e){if(e.target.files[0])openFile(e.target.files[0]);e.target.value=''};
 /* 끌어다 놓기 */
 var dr=$('drop'),dc=0;
