@@ -15,6 +15,8 @@
     return p || document.title || 'doc';
   }
   var CFG = {
+    wordsUrl: ds.wordsUrl || (S && S.src ? new URL('ion-words.json', S.src).href : ''),
+    sentsUrl: ds.sentsUrl || (S && S.src ? new URL('ion-sents.json', S.src).href : ''),
     doc: ds.doc || autoDoc(),
     url: (ds.supabaseUrl || '').replace(/\/+$/, ''),
     key: ds.supabaseKey || '',
@@ -388,10 +390,20 @@
     'select.mv{width:auto;max-width:105px;border:1px solid #d3d8df;border-radius:7px;padding:3px 4px;font-size:12px;background:#fff;color:#445}.wd select.mv{max-width:78px}',
     '.card .sn{color:#7a8294;font-size:12.5px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.gh{font-size:12.5px;font-weight:700;color:#5f6f8f;margin:12px 2px 6px}',
     '.note2{height:calc(100vh - 240px)}',
+    '.seg{display:flex;background:#eef1f6;border-radius:9px;padding:3px;margin-bottom:10px}.seg button{flex:1;border:0;background:none;padding:6px 0;border-radius:7px;font-size:13px;cursor:pointer;color:#6b7480}.seg button.on{background:#fff;color:#1f3a5f;font-weight:700;box-shadow:0 1px 3px #0002}',
+    '.dr{border-bottom:1px solid #eef0f3}.dh{display:flex;align-items:center;gap:8px;padding:8px 2px;cursor:pointer}.dh .en{font-family:Georgia,serif;font-weight:700;font-size:15px;min-width:84px}.dh .dk{flex:1;font-size:13px;color:#445}.dr .ch{padding:0 2px 6px}.dr .ex{font-family:Georgia,serif;font-size:13.5px;line-height:1.55;padding:6px 8px;margin:0 0 6px;background:#f6f8fb;border-radius:8px}.dr .ex .xs{font-family:system-ui,sans-serif;font-size:11px;color:#8a94a8;margin-top:2px}.hl{background:#fde58a;font-weight:700}',
+    '.c{display:inline-block;font-size:11px;background:#eef2f8;color:#5f6f8f;border-radius:999px;padding:1px 8px;margin:0 4px 4px 0}',
+    '.tip{position:fixed;z-index:2147483002;display:none;width:260px;background:#fff;border:1px solid #d3d8df;border-radius:12px;padding:10px 12px;box-shadow:0 6px 22px #0003;font-size:13px;color:#1d2330}.tip.on{display:block}.tip .w{font-weight:700;font-size:16px;font-family:Georgia,serif;cursor:pointer}.tip .w small{font-weight:400;font-size:11px;color:#8a94a8;font-family:system-ui}.tip .k{margin:2px 0 6px;font-size:14px}.tip .tb{display:flex;gap:6px;margin-top:6px}',
+    '.msg{position:fixed;left:50%;bottom:70px;transform:translateX(-50%);z-index:2147483003;background:#1f3a5f;color:#fff;font-size:13px;padding:7px 14px;border-radius:999px;display:none}.msg.on{display:block}',
     '@media print{.dock,.drawer,.sel,.layer{display:none!important}}'
   ].join('');
 
-  var pushed = null, W = 380;
+  var pushed = null, W = 380, lastF = 1;
+  /* 브라우저 확대/축소와 상관없이 패널·버튼 크기를 일정하게 */
+  function zf() {
+    try { var t = window.top, z = t.outerWidth / t.innerWidth; if (!(z > 0.25 && z < 6)) return 1; z = Math.round(z * 100) / 100; return Math.abs(z - 1) < 0.04 ? 1 : 1 / z; } catch (e) { return 1; }
+  }
+  function applyZoom() { var f = zf(); [ui.drawer, ui.dock].forEach(function (el) { if (el) el.style.zoom = f === 1 ? '' : String(f); }); return f; }
   /* 전체화면 요소 찾기 — 같은 출처 iframe 안쪽까지 따라 들어감 */
   function fsCtx() {
     var d = document, el = d.fullscreenElement || d.webkitFullscreenElement || null, n = 0;
@@ -410,7 +422,7 @@
       if (pushed.f) pushed.f.style.width = pushed.fw;
       pushed = null;
     }
-    var c = fsCtx(), d = c.doc, de = d.documentElement, win = d.defaultView || window;
+    var c = fsCtx(), d = c.doc, de = d.documentElement, win = d.defaultView || window, Wp = Math.round(W * applyZoom()); lastF = zf();
     if (on && win.innerWidth >= 760) {
       var fe = c.el && c.el !== de && c.el !== d.body ? c.el : null;
       pushed = { doc: d, m: de.style.marginRight, o: de.style.overflowX, t: de.style.transition, f: fe, fw: fe ? fe.style.width : '', fx: [] };
@@ -418,10 +430,10 @@
         if (el === host || host.contains(el) || !el.getBoundingClientRect) return;
         var cs = win.getComputedStyle(el); if (cs.position !== 'fixed' || cs.display === 'none') return;
         var rc = el.getBoundingClientRect(); if (rc.width < win.innerWidth * 0.9 || rc.left > 2 || rc.right < win.innerWidth - 2) return;
-        pushed.fx.push({ el: el, r: el.style.right }); el.style.right = W + 'px';
+        pushed.fx.push({ el: el, r: el.style.right }); el.style.right = Wp + 'px';
       });
-      if (fe) fe.style.width = 'calc(100% - ' + W + 'px)';
-      else { de.style.transition = 'margin-right .15s'; de.style.marginRight = W + 'px'; de.style.overflowX = 'auto'; }
+      if (fe) fe.style.width = 'calc(100% - ' + Wp + 'px)';
+      else { de.style.transition = 'margin-right .15s'; de.style.marginRight = Wp + 'px'; de.style.overflowX = 'auto'; }
     }
     setTimeout(function () { window.dispatchEvent(new Event('resize')); try { win.dispatchEvent(new Event('resize')); } catch (e) { } }, 180);
   }
@@ -431,6 +443,7 @@
     if (host.parentNode !== tgt) { try { tgt.appendChild(host); } catch (e) { } }
     if (ui.drawer.classList.contains('on')) pushPage(true);
   }
+  window.addEventListener('resize', function () { var f = zf(); if (f !== lastF) { lastF = f; applyZoom(); if (ui.drawer && ui.drawer.classList.contains('on')) pushPage(true); } });
   document.addEventListener('fullscreenchange', onFS); document.addEventListener('webkitfullscreenchange', onFS);
   function openPanel(tab) { ui.drawer.classList.add('on'); pushPage(true); if (tab) showTab(tab); else drawTab(true); }
   function closePanel() { ui.drawer.classList.remove('on'); pushPage(false); }
@@ -591,12 +604,19 @@
 
   /* ───────── 단어 ───────── */
   var wdQ = '', focusWord = null, focusEn = false;
+  var wdMode = 'mine', dQ = '', dOpen = null;
   function drawWord(box) {
+    var seg = h('div', { class: 'seg' }, [
+      h('button', { class: wdMode === 'mine' ? 'on' : '', text: '내 단어장', onclick: function () { wdMode = 'mine'; drawTab(true); } }),
+      h('button', { class: wdMode === 'dict' ? 'on' : '', text: '사전', onclick: function () { wdMode = 'dict'; drawTab(true); } })]);
+    box.appendChild(seg);
+    var had = !!DICT; ensureDict().then(function () { if (!had && DICT && curTab === 'word') drawTab(true); });
+    if (wdMode === 'dict') return drawDict(box);
     var en = h('input', { placeholder: '영어', 'data-keep': 1 }), ko = h('input', { placeholder: '뜻', 'data-keep': 1 });
     var add = function () {
       var e = en.value.trim(); if (!e) return;
-      var old = Store.get('*', 'word', e.toLowerCase());
-      Store.put('*', 'word', e.toLowerCase(), fBody({ en: e, ko: ko.value.trim(), star: old ? old.star : false, src: CFG.doc }, old ? old.f : curNewF('word')));
+      var old = Store.get('*', 'word', e.toLowerCase()), hit = ko.value.trim() ? null : lookup(e);
+      Store.put('*', 'word', e.toLowerCase(), fBody({ en: e, ko: ko.value.trim() || (hit ? koOf(hit.ent) : ''), star: old ? old.star : false, src: CFG.doc }, old ? old.f : curNewF('word')));
       en.value = ko.value = ''; focusEn = true; drawTab(true);
     };
     ko.addEventListener('keydown', function (e) { if (e.key === 'Enter') add(); });
@@ -626,6 +646,52 @@
       });
     }
     renderList();
+  }
+
+  function dictSearch(q) {
+    q = q.trim().toLowerCase(); if (!q || !DICT) return [];
+    var out = [], seen = {};
+    var push = function (k) { if (!seen[k] && out.length < 60) { seen[k] = 1; out.push(k); } };
+    if (/[가-힣]/.test(q)) { KEYS.forEach(function (k) { if (out.length < 60 && DICT.w[k].some(function (e) { return e[0].indexOf(q) >= 0; })) push(k); }); }
+    else {
+      var c = cands(q); c.forEach(function (x) { if (DICT.w[x]) push(x); });
+      KEYS.forEach(function (k) { if (k.indexOf(q) === 0) push(k); });
+      KEYS.forEach(function (k) { if (k.indexOf(q) > 0) push(k); });
+    }
+    return out;
+  }
+  function drawDict(box) {
+    var q = h('input', { placeholder: '영어 또는 한글로 검색 (예: abandon, 포기)', value: dQ, 'data-keep': 1, oninput: function (e) { dQ = e.target.value; dOpen = null; renderList(); } });
+    box.appendChild(h('div', { class: 'row' }, [q]));
+    box.appendChild(h('div', { class: 'hint', text: DICT ? '단어장 ' + DICT.b.length + '권 · ' + KEYS.length + '개 단어. 단어를 누르면 예문이 나옵니다.' : '사전을 불러오는 중…' }));
+    var listBox = h('div'); box.appendChild(listBox);
+    function renderList() {
+      listBox.textContent = '';
+      if (!DICT) { listBox.appendChild(h('div', { class: 'empty', text: CFG.wordsUrl ? '사전을 불러오는 중이거나 불러오지 못했습니다.' : '사전 파일 주소가 설정되지 않았습니다.' })); return; }
+      var keys = dictSearch(dQ);
+      if (!dQ.trim()) { listBox.appendChild(h('div', { class: 'empty', text: '검색어를 입력하세요.' })); return; }
+      if (!keys.length) { listBox.appendChild(h('div', { class: 'empty', text: '찾는 단어가 없습니다.' })); return; }
+      keys.forEach(function (k) {
+        var ent = DICT.w[k], mine = !!Store.get('*', 'word', k), open = dOpen === k;
+        var row = h('div', { class: 'dr' + (open ? ' open' : '') }, [
+          h('div', { class: 'dh', onclick: function () { dOpen = open ? null : k; if (!open) ensureSents().then(function () { renderList(); }); renderList(); } }, [
+            h('span', { class: 'en', text: k, onclick: function (e) { e.stopPropagation(); speak(k); }, title: '누르면 발음' }),
+            h('span', { class: 'dk', text: koOf(ent) }),
+            h('button', { class: 'btn sm' + (mine ? '' : ' pri'), text: mine ? '담음' : '+ 담기', onclick: function (e) { e.stopPropagation(); if (!mine) { addFromDict(k, ent, false); renderList(); } } })
+          ])
+        ]);
+        if (open) {
+          var chips = h('div', { class: 'ch' }); srcChips(ent, 8).forEach(function (c) { chips.appendChild(h('span', { class: 'c', text: c })); }); row.appendChild(chips);
+          var ex = examples(k, 5);
+          if (!SENTS) row.appendChild(h('div', { class: 'hint', text: '예문을 불러오는 중…' }));
+          else if (!ex.length) row.appendChild(h('div', { class: 'hint', text: '기출 예문이 없습니다.' }));
+          else ex.forEach(function (x) { row.appendChild(h('div', { class: 'ex' }, [hiNode(x.s, x.re), h('div', { class: 'xs', text: x.src + (x.ty ? ' · ' + x.ty : '') })])); });
+        }
+        listBox.appendChild(row);
+      });
+    }
+    renderList();
+    if (dOpen) ensureSents().then(function () { if (curTab === 'word' && wdMode === 'dict') renderList(); });
   }
   function speak(t) { try { var u = new SpeechSynthesisUtterance(t); u.lang = 'en-US'; speechSynthesis.cancel(); speechSynthesis.speak(u); } catch (e) { } }
 
@@ -676,10 +742,110 @@
     box.appendChild(msg);
   }
 
+  /* ───────── 내장 단어 사전 ───────── */
+  var DICT = null, DICT_P = null, SENTS = null, SENTS_P = null, KEYS = [];
+  function ensureDict() {
+    if (DICT) return Promise.resolve(DICT);
+    if (!CFG.wordsUrl) return Promise.resolve(null);
+    if (!DICT_P) DICT_P = fetch(CFG.wordsUrl).then(function (r) { if (!r.ok) throw 0; return r.json(); }).then(function (d) { DICT = d; KEYS = Object.keys(d.w); return d; }).catch(function () { DICT_P = null; return null; });
+    return DICT_P;
+  }
+  function ensureSents() {
+    if (SENTS) return Promise.resolve(SENTS);
+    if (!CFG.sentsUrl) return Promise.resolve(null);
+    if (!SENTS_P) SENTS_P = fetch(CFG.sentsUrl).then(function (r) { if (!r.ok) throw 0; return r.json(); }).then(function (d) { SENTS = d; return d; }).catch(function () { SENTS_P = null; return null; });
+    return SENTS_P;
+  }
+  function cands(t) {
+    t = (t || '').toLowerCase().replace(/[^a-z' \-]/g, '').replace(/\s+/g, ' ').trim();
+    var o = [t]; if (!t || /\s/.test(t)) return o;
+    var add = function (x) { if (x && x.length > 1 && o.indexOf(x) < 0) o.push(x); };
+    if (/'s$/.test(t)) add(t.slice(0, -2));
+    if (/ies$/.test(t)) add(t.slice(0, -3) + 'y');
+    if (/ied$/.test(t)) add(t.slice(0, -3) + 'y');
+    if (/es$/.test(t)) add(t.slice(0, -2));
+    if (/s$/.test(t)) add(t.slice(0, -1));
+    if (/ed$/.test(t)) { add(t.slice(0, -2)); add(t.slice(0, -1)); if (/(.)\1$/.test(t.slice(0, -2))) add(t.slice(0, -3)); }
+    if (/ing$/.test(t)) { add(t.slice(0, -3)); add(t.slice(0, -3) + 'e'); if (/(.)\1$/.test(t.slice(0, -3))) add(t.slice(0, -4)); }
+    if (/ly$/.test(t)) add(t.slice(0, -2));
+    if (/er$/.test(t)) { add(t.slice(0, -2)); add(t.slice(0, -1)); }
+    if (/est$/.test(t)) { add(t.slice(0, -3)); add(t.slice(0, -2)); }
+    return o;
+  }
+  function lookup(t) {
+    if (!DICT) return null;
+    var c = cands(t);
+    for (var i = 0; i < c.length; i++) if (DICT.w[c[i]]) return { key: c[i], ent: DICT.w[c[i]] };
+    return null;
+  }
+  function koOf(ent) {
+    var t = [];
+    ent.slice(0, 4).forEach(function (e) { e[0].split(/\s*[;,]\s*/).forEach(function (x) { x = x.trim(); if (x && t.indexOf(x) < 0) t.push(x); }); });
+    return t.slice(0, 4).join(', ');
+  }
+  function srcChips(ent, n) {
+    var seen = {}, out = [];
+    ent.forEach(function (e) { e[1].forEach(function (p) { var k = p[0] + ':' + p[1]; if (!seen[k]) { seen[k] = 1; out.push(DICT.b[p[0]][1] + ' ' + p[1]); } }); });
+    return out.slice(0, n);
+  }
+  function wordRe(key) {
+    var e = function (x) { return x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }, a = [e(key)];
+    if (!/\s/.test(key)) {
+      var suf = '(?:s|es|ed|d|ing|er|est|ly)?';
+      a = [e(key) + suf];
+      if (/e$/.test(key)) a.push(e(key.slice(0, -1)) + '(?:ing|ed)');
+      if (/y$/.test(key)) a.push(e(key.slice(0, -1)) + '(?:ies|ied|ily)');
+      if (/[^aeiou][aeiou][bdgmnprt]$/.test(key)) a.push(e(key) + e(key.slice(-1)) + '(?:ed|ing|er)');
+    }
+    return new RegExp('\\b(?:' + a.join('|') + ')\\b', 'i');
+  }
+  function examples(key, n) {
+    if (!SENTS) return [];
+    var re = wordRe(key), out = [];
+    for (var i = 0; i < SENTS.r.length && out.length < n; i++) { var r = SENTS.r[i]; if (re.test(r[4])) out.push({ s: r[4], src: SENTS.ex[r[1]] + ' ' + r[2] + '번', ty: SENTS.ty[r[3]] || '', re: re }); }
+    return out;
+  }
+  function hiNode(text, re) {
+    var m = re.exec(text), box = h('span');
+    if (!m) { box.textContent = text; return box; }
+    box.appendChild(document.createTextNode(text.slice(0, m.index)));
+    box.appendChild(h('b', { class: 'hl', text: m[0] }));
+    box.appendChild(document.createTextNode(text.slice(m.index + m[0].length)));
+    return box;
+  }
+  function addFromDict(key, ent, note) {
+    if (Store.get('*', 'word', key)) { if (note !== false) toast('이미 내 단어장에 있어요'); return false; }
+    Store.put('*', 'word', key, fBody({ en: key, ko: koOf(ent), star: false, src: CFG.doc }, curNewF('word')));
+    if (note !== false) toast('담았어요: ' + key); return true;
+  }
+  function toast(m) { if (!ui.msg) return; ui.msg.textContent = m; ui.msg.classList.add('on'); clearTimeout(toast.t); toast.t = setTimeout(function () { ui.msg.classList.remove('on'); }, 1600); }
+
+  /* 선택한 단어 위에 뜻 카드 */
+  function showTip(r, t) {
+    if (!ui.tip) return;
+    ensureDict().then(function (d) {
+      if (!d || ui.selText !== t || !ui.sel.classList.contains('on')) return;
+      var hit = lookup(t); if (!hit) { ui.tip.classList.remove('on'); return; }
+      ui.tip.textContent = '';
+      var head = h('div', { class: 'w' }, [h('span', { text: hit.key, onclick: function () { speak(hit.key); }, title: '누르면 발음' })]);
+      if (hit.key !== t.toLowerCase()) head.appendChild(h('small', { text: '  ← ' + t }));
+      ui.tip.appendChild(head);
+      ui.tip.appendChild(h('div', { class: 'k', text: koOf(hit.ent) }));
+      var chips = h('div'); srcChips(hit.ent, 3).forEach(function (c) { chips.appendChild(h('span', { class: 'c', text: c })); }); ui.tip.appendChild(chips);
+      ui.tip.appendChild(h('div', { class: 'tb' }, [
+        h('button', { class: 'btn pri sm', text: '+ 내 단어장', onclick: function () { addFromDict(hit.key, hit.ent); } }),
+        h('button', { class: 'btn sm', text: '예문·사전', onclick: function () { wdMode = 'dict'; dQ = hit.key; dOpen = hit.key; window.getSelection().removeAllRanges(); ui.sel.classList.remove('on'); ui.tip.classList.remove('on'); openPanel('word'); } })
+      ]));
+      var th = 120, top = r.bottom + 8; if (top + th > innerHeight) top = Math.max(8, r.top - th - 50);
+      ui.tip.style.left = Math.min(innerWidth - 276, Math.max(8, r.left + r.width / 2 - 130)) + 'px'; ui.tip.style.top = top + 'px';
+      ui.tip.classList.add('on');
+    });
+  }
+
   /* ───────── 선택 → 구문/단어 담기 ───────── */
   function onSelect() {
     var s = window.getSelection(), t = s ? s.toString().trim() : '';
-    if (!t || t.length > 600 || s.rangeCount === 0) { ui.sel.classList.remove('on'); return; }
+    if (!t || t.length > 600 || s.rangeCount === 0) { ui.sel.classList.remove('on'); ui.tip && ui.tip.classList.remove('on'); return; }
     var n = s.anchorNode && (s.anchorNode.nodeType === 1 ? s.anchorNode : s.anchorNode.parentElement);
     if (n && n.closest && (n.closest('#ion-tools-host') || n.closest('textarea,input'))) { ui.sel.classList.remove('on'); return; }
     var r = s.getRangeAt(0).getBoundingClientRect();
@@ -688,6 +854,8 @@
     ui.sel.style.left = Math.min(innerWidth - 170, Math.max(8, r.left + r.width / 2 - 70)) + 'px';
     ui.sel.style.top = Math.max(8, r.top - 44) + 'px';
     ui.sel.classList.add('on'); ui.selText = t;
+    ui.tip && ui.tip.classList.remove('on');
+    if (words <= 3 && /^[A-Za-z][A-Za-z' \-]*$/.test(t)) showTip(r, t);
   }
   function ctxOf(t) {
     var s = window.getSelection(); if (!s.rangeCount) return '';
@@ -706,7 +874,12 @@
   function saveWord() {
     var t = ui.selText.replace(/[^A-Za-z'\- ]/g, '').trim(); if (!t) return;
     var k = t.toLowerCase();
-    if (!Store.get('*', 'word', k)) Store.put('*', 'word', k, fBody({ en: t, ko: '', star: false, src: CFG.doc }, curNewF('word')));
+    var hit = lookup(t), nf = curNewF('word');
+    if (!Store.get('*', 'word', k)) {
+      Store.put('*', 'word', k, fBody({ en: t, ko: hit ? koOf(hit.ent) : '', star: false, src: CFG.doc }, nf));
+      if (!hit) ensureDict().then(function () { var h2 = lookup(t), b = Store.get('*', 'word', k); if (h2 && b && !b.ko) Store.put('*', 'word', k, Object.assign({}, b, { ko: koOf(h2.ent) })); });
+    }
+    ui.tip && ui.tip.classList.remove('on');
     focusWord = k; window.getSelection().removeAllRanges(); ui.sel.classList.remove('on'); openPanel('word');
   }
 
@@ -727,8 +900,11 @@
     ui.sel = h('div', { class: 'sel' }, [h('button', { text: '구문 담기', onclick: savePhrase }), ui.selWord]);
     ui.sel.addEventListener('mousedown', function (e) { e.preventDefault(); });
     ui.toast = h('div', { class: 'toast' }, [h('span', { text: '다른 기기에서 바뀐 데이터가 있어요' }), h('button', { text: '새로고침', onclick: function () { location.reload(); } }), h('button', { text: '×', onclick: function () { ui.toast.classList.remove('on'); } })]);
-    root.appendChild(ui.toast); root.appendChild(ui.layer); root.appendChild(ui.dock); root.appendChild(ui.drawer); root.appendChild(ui.sel);
+    ui.tip = h('div', { class: 'tip' }); ui.tip.addEventListener('mousedown', function (e) { if (e.target.tagName !== 'INPUT') e.preventDefault(); });
+    ui.msg = h('div', { class: 'msg' });
+    root.appendChild(ui.tip); root.appendChild(ui.msg); root.appendChild(ui.toast); root.appendChild(ui.layer); root.appendChild(ui.dock); root.appendChild(ui.drawer); root.appendChild(ui.sel);
     document.body.appendChild(host);
+    applyZoom();
 
     var st = document.createElement('style');
     st.textContent = '::highlight(ion-phrase){background:#fde58a;color:inherit}::highlight(ion-flash){background:#ffb347;color:inherit}html.ion-placing,html.ion-placing *{cursor:crosshair!important}';
@@ -738,7 +914,7 @@
     showTab(curTab);
     document.addEventListener('mouseup', function () { setTimeout(onSelect, 10); });
     document.addEventListener('keyup', function (e) { if (e.shiftKey || e.key.indexOf('Arrow') === 0) setTimeout(onSelect, 10); });
-    document.addEventListener('selectionchange', debounce(function () { if (!window.getSelection().toString().trim()) ui.sel.classList.remove('on'); else if ('ontouchstart' in window) onSelect(); }, 250));
+    document.addEventListener('selectionchange', debounce(function () { if (!window.getSelection().toString().trim()) { ui.sel.classList.remove('on'); ui.tip && ui.tip.classList.remove('on'); } else if ('ontouchstart' in window) onSelect(); }, 250));
     window.addEventListener('resize', relayout);
     if (window.ResizeObserver) new ResizeObserver(relayout).observe(document.body);
     window.addEventListener('load', function () { relayout(); paintHL(); });
