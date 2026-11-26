@@ -374,6 +374,7 @@
     '.card{border:1px solid #e3e6ea;border-radius:10px;padding:9px 11px;margin-bottom:8px;background:#fafbfc}',
     '.card .t{font-size:14px;line-height:1.5;cursor:pointer}.card .m{font-size:11.5px;color:#8a93a1;margin-top:3px;display:flex;gap:8px;align-items:center}.card textarea{margin-top:6px;font-size:13px;min-height:44px}',
     '.card .m .sp{flex:1}.link{color:#2f5bff;cursor:pointer}.del{color:#b3bac6;cursor:pointer;border:0;background:none;font-size:15px}.del:hover{color:#d9534f}',
+    '.gsw{padding:8px 12px 0}.gs{width:100%;box-sizing:border-box;padding:8px 11px;border:1px solid #d5dae2;border-radius:9px;font-size:13px;background:#f6f8fb}.gs:focus{outline:none;border-color:#2f5bff;background:#fff}.gh .n{color:#8a93a1;font-weight:400}.sr{border:1px solid #e3e6ea;border-radius:10px;padding:8px 11px;margin-bottom:6px;background:#fafbfc;cursor:pointer;font-size:13.5px;line-height:1.5}.sr:hover{border-color:#2f5bff}.sr .sm{font-size:11.5px;color:#8a93a1}.sr .sx{display:flex;gap:6px;align-items:baseline;flex-wrap:wrap}',
     '.empty{color:#9aa3b0;text-align:center;padding:30px 0;font-size:13px}',
     '.hint{font-size:12px;color:#8a93a1;margin:6px 0}',
     '.wd{display:flex;align-items:center;gap:8px;padding:7px 4px;border-bottom:1px solid #eef0f3}.wd .en{font-family:Georgia,serif;font-weight:700;font-size:15px;min-width:90px;cursor:pointer}.wd input{border:0;padding:3px 4px;border-bottom:1px dashed #d3d8df;border-radius:0;flex:1;font-size:13px}.star{cursor:pointer;color:#c4cad4;font-size:16px;border:0;background:none}.star.on{color:#f0a60c}',
@@ -446,12 +447,12 @@
   document.addEventListener('fullscreenchange', onFS); document.addEventListener('webkitfullscreenchange', onFS);
   function openPanel(tab) { ui.drawer.classList.add('on'); pushPage(true); if (tab) showTab(tab); else drawTab(true); }
   function closePanel() { ui.drawer.classList.remove('on'); pushPage(false); }
-  var curTab = null;
+  var curTab = null, gQ = '';
   var TABNAME = { note: '노트', memo: '메모', phrase: '구문', word: '단어', acct: '계정' };
-  function showTab(t) { curTab = t; Array.prototype.forEach.call(ui.tabs.children, function (b) { b.classList.toggle('on', b.dataset.t === t); }); drawTab(true); }
+  function showTab(t) { gQ = ''; if (ui.gs) ui.gs.value = ''; curTab = t; Array.prototype.forEach.call(ui.tabs.children, function (b) { b.classList.toggle('on', b.dataset.t === t); }); drawTab(true); }
   function drawTab(force) {
     if (!curTab) return;
-    var fn = { note: drawNote, memo: drawMemo, phrase: drawPhrase, word: drawWord, acct: drawAcct }[curTab];
+    var fn = gQ.trim() ? drawSearch : { note: drawNote, memo: drawMemo, phrase: drawPhrase, word: drawWord, acct: drawAcct }[curTab];
     var keep = root.activeElement, ks = keep && keep.dataset && keep.dataset.keep;
     if (!force && ks && ui.body.contains(keep)) return;     // 입력 중에는 다시 그리지 않음
     ui.body.textContent = ''; fn(ui.body);
@@ -606,8 +607,8 @@
   var wdMode = 'mine', dQ = '', dOpen = null;
   function drawWord(box) {
     var seg = h('div', { class: 'seg' }, [
-      h('button', { class: wdMode === 'mine' ? 'on' : '', text: '내 단어장', onclick: function () { wdMode = 'mine'; drawTab(true); } }),
-      h('button', { class: wdMode === 'dict' ? 'on' : '', text: '사전', onclick: function () { wdMode = 'dict'; drawTab(true); } })]);
+      h('button', { class: wdMode === 'dict' ? 'on' : '', text: '사전', onclick: function () { wdMode = 'dict'; drawTab(true); } }),
+      h('button', { class: wdMode === 'mine' ? 'on' : '', text: '내 단어장', onclick: function () { wdMode = 'mine'; drawTab(true); } })]);
     box.appendChild(seg);
     var had = !!DICT; ensureDict().then(function () { if (!had && DICT && curTab === 'word') drawTab(true); });
     if (wdMode === 'dict') return drawDict(box);
@@ -693,6 +694,47 @@
       });
     }
     renderList();
+  }
+
+  /* ───────── 전체 검색 ───────── */
+  function escRe(x) { return x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+  function snipAround(t, re, n) {
+    t = (t || '').replace(/\s+/g, ' '); var m = re.exec(t); if (!m || t.length <= n) return t.slice(0, n);
+    var a = Math.max(0, m.index - Math.floor(n / 3)); return (a ? '…' : '') + t.slice(a, a + n);
+  }
+  function goTab(t, fn) { if (fn) fn(); showTab(t); }
+  function drawSearch(box) {
+    var q = gQ.trim(), ql = q.toLowerCase(), re = new RegExp(escRe(q), 'i'), has = CFG.tabs.indexOf.bind(CFG.tabs), total = 0;
+    var sec = function (title, n) { box.appendChild(h('div', { class: 'gh' }, [title + ' ', h('span', { class: 'n', text: n })])); total += n; };
+    var row = function (main, sub, onclick) { box.appendChild(h('div', { class: 'sr', onclick: onclick }, [main, sub ? h('div', { class: 'sm', text: sub }) : null].filter(Boolean))); };
+    var inc = function (x) { return (x || '').toLowerCase().indexOf(ql) >= 0; };
+    if (has('note') >= 0) {
+      var ns = Store.list('note').filter(function (it) { return !(it.k === 'main' && !(it.body.t || '').trim()) && inc(noteTitle(it) + ' ' + (it.body.t || '')); }).sort(function (a, b) { return a.ts < b.ts ? 1 : -1; });
+      if (ns.length) { sec('📝 내 노트', ns.length); ns.forEach(function (it) { row(h('div', {}, [h('b', { text: noteTitle(it) }), h('div', { class: 'sm' }, [hiNode(snipAround(it.body.t, re, 80), new RegExp(escRe(q), 'i'))])]), fmtTime(it.ts), function () { goTab('note', function () { noteOpen = { k: it.k, doc: it.doc }; }); }); }); }
+    }
+    if (has('memo') >= 0) {
+      var ms = Store.list('memo').filter(function (it) { return inc(it.body.t); });
+      if (ms.length) { sec('📌 내 메모', ms.length); ms.forEach(function (it) { row(hiNode(snipAround(it.body.t, re, 90), new RegExp(escRe(q), 'i')), it.doc === CFG.doc ? '이 자료' : it.doc, function () { goTab('memo', function () { memoScope = 'all'; }); }); }); }
+    }
+    if (has('phrase') >= 0) {
+      var ps = Store.list('phrase').filter(function (it) { return inc(it.body.text + ' ' + (it.body.memo || '')); }).sort(function (a, b) { return a.ts < b.ts ? 1 : -1; });
+      if (ps.length) { sec('🔖 내 구문', ps.length); ps.forEach(function (it) { var here = (it.body.src || it.doc) === CFG.doc; row(hiNode(snipAround(it.body.text, re, 110), new RegExp(escRe(q), 'i')), (it.body.memo ? it.body.memo.slice(0, 40) + ' · ' : '') + (here ? '이 자료' : (it.body.src || it.doc)), function () { if (here && jumpTo(it.body.text, it.body.ctx)) { closePanel(); return; } goTab('phrase', function () { phScope = 'all'; phQ = q; }); }); }); }
+    }
+    if (has('word') >= 0) {
+      var ws = Store.list('word').filter(function (it) { return inc((it.body.en || '') + ' ' + (it.body.ko || '')); });
+      if (ws.length) { sec('⭐ 내 단어', ws.length); ws.forEach(function (it) { row(h('div', { class: 'sx' }, [h('b', { text: it.body.en }), h('span', { text: it.body.ko || '' })]), '', function () { goTab('word', function () { wdMode = 'mine'; wdQ = q; }); }); }); }
+      var had = !!DICT; ensureDict().then(function () { if (!had && DICT && gQ.trim() === q && curTab) drawTab(true); });
+      var keys = dictSearch(q);
+      if (keys.length) { sec('📚 사전', keys.length); keys.forEach(function (k) { var ent = DICT.w[k]; row(h('div', { class: 'sx' }, [h('b', { text: k }), h('span', { text: koOf(ent) })]), srcChips(ent, 2).join(' · '), function () { goTab('word', function () { wdMode = 'dict'; dQ = k; dOpen = k; }); }); }); }
+      else if (!DICT && CFG.wordsUrl) box.appendChild(h('div', { class: 'hint', text: '사전을 불러오는 중…' }));
+      var ex = [], exs = {};
+      var addEx = function (arr) { arr.forEach(function (x) { var kk = x.s.toLowerCase(); if (!exs[kk]) { exs[kk] = 1; ex.push(x); } }); };
+      if (/^[a-z'-]+$/i.test(q)) addEx(examples(ql, 1000));
+      else if (/[a-z]/i.test(q) && /\s/.test(q)) { var pr = new RegExp(escRe(q).replace(/\s+/g, '\\s+'), 'i'); addEx(domSentences().filter(function (x) { return pr.test(x); }).map(function (x) { return { s: x, re: pr }; })); }
+      else if (/[가-힣]/.test(q)) keys.slice(0, 3).forEach(function (k) { addEx(examples(k, 1000)); });
+      if (ex.length) { sec('📄 이 파일 예문', ex.length); ex.forEach(function (x) { box.appendChild(h('div', { class: 'ex' }, [hiNode(x.s, x.re), h('div', { class: 'xs' }, [h('button', { class: 'btn sm', text: '이 문제로 가기 ›', onclick: function () { goToSentence(x.s, x.re); } })])])); }); }
+    }
+    if (!total) box.appendChild(h('div', { class: 'empty', text: '"' + q + '" 검색 결과가 없습니다.' }));
   }
   function speak(t) { try { var u = new SpeechSynthesisUtterance(t); u.lang = 'en-US'; speechSynthesis.cancel(); speechSynthesis.speak(u); } catch (e) { } }
 
@@ -1010,8 +1052,10 @@
     ui.dock = h('button', { class: 'dock', title: 'ION 도구', onclick: function () { ui.drawer.classList.contains('on') ? closePanel() : openPanel(curTab || CFG.tabs[0]); } }, ['ION', ui.dt]);
     ui.tabs = h('div', { class: 'tabs' }, CFG.tabs.concat(['acct']).map(function (t) { return h('button', { 'data-t': t, text: TABNAME[t] || t, onclick: function () { showTab(t); } }); }));
     ui.body = h('div', { class: 'body' });
+    ui.gs = h('input', { class: 'gs', placeholder: '🔍 전체 검색 (노트 · 메모 · 구문 · 단어 · 사전 · 이 파일 예문)', 'data-keep': 1, oninput: function (e) { gQ = e.target.value; Array.prototype.forEach.call(ui.tabs.children, function (b) { b.classList.toggle('on', !gQ.trim() && b.dataset.t === curTab); }); drawTab(true); }, onkeydown: function (e) { if (e.key === 'Escape') { e.target.value = ''; gQ = ''; showTab(curTab); } } });
     ui.drawer = h('div', { class: 'drawer' }, [
-      h('div', { class: 'hd' }, [h('b', { text: CFG.doc }), h('button', { class: 'x', text: '×', onclick: closePanel })]), ui.tabs, ui.body]);
+      h('div', { class: 'hd' }, [h('b', { text: CFG.doc }), h('button', { class: 'x', text: '×', onclick: closePanel })]),
+      h('div', { class: 'gsw' }, [ui.gs]), ui.tabs, ui.body]);
     ui.selWord = h('button', { text: '단어 담기', onclick: saveWord });
     ui.sel = h('div', { class: 'sel' }, [h('button', { text: '구문 담기', onclick: savePhrase }), ui.selWord]);
     ui.sel.addEventListener('mousedown', function (e) { e.preventDefault(); });
