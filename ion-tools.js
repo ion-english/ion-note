@@ -683,11 +683,10 @@
         if (!open) { var cl = h('div', { class: 'ch' }); all.slice(0, 2).forEach(function (c) { cl.appendChild(h('span', { class: 'c', text: c })); }); if (all.length > 2) cl.appendChild(h('span', { class: 'c more', text: '+' + (all.length - 2) })); row.appendChild(cl); }
         if (open) {
           var chips = h('div', { class: 'ch' }); srcChips(ent, 30).forEach(function (c) { chips.appendChild(h('span', { class: 'c', text: c })); }); row.appendChild(chips);
-          var ex = examples(k, 1000), full = ex.length ? textIndex().full : '';
+          var ex = examples(k, 1000);
           row.appendChild(h('div', { class: 'hint', text: ex.length ? '📄 이 파일에서 찾은 예문 ' + ex.length + (ex.length >= 1000 ? '개 이상 (처음 1000개만 표시)' : '개') : '📄 이 파일에서 찾은 예문이 없습니다.' }));
           ex.forEach(function (x) {
-            var here = full.indexOf(x.s.slice(0, 40)) >= 0;
-            row.appendChild(h('div', { class: 'ex' }, [hiNode(x.s, x.re), here ? h('div', { class: 'xs' }, [h('a', { class: 'link', text: '본문에서 보기', onclick: function () { jumpTo(x.s.slice(0, 80), ''); } })]) : null]));
+                        row.appendChild(h('div', { class: 'ex' }, [hiNode(x.s, x.re), h('div', { class: 'xs' }, [h('button', { class: 'btn sm', text: '이 문제로 가기 ›', onclick: function () { goToSentence(x.s, x.re); } })])]));
           });
         }
         listBox.appendChild(row);
@@ -811,16 +810,16 @@
     var w = src.slice(Math.max(0, a - 420), a) + '\u0001' + src.slice(a, b) + '\u0002' + src.slice(b, Math.min(src.length, b + 420));
     w = w.replace(/<[^>]*>/g, '').replace(/^[^<]*?>/, '').replace(/<[^>]*$/, '');
     var p = w.indexOf('\u0001'), q = w.indexOf('\u0002'); if (p < 0 || q < 0) return '';
-    var left = w.slice(0, p), mid = w.slice(p + 1, q), right = w.slice(q + 1), cl = -1, m, rx = /[`\n\\{}\[\]"]|[.?!]["”’']?\s/g;
+    var left = w.slice(0, p), mid = w.slice(p + 1, q), right = w.slice(q + 1), cl = -1, m, rx = /[`\n\\{}\[\]"\u2460-\u2473\u2776-\u2793]|[.?!]["”’']?\s/g;
     while ((m = rx.exec(left))) cl = m.index + m[0].length;
     left = left.slice(cl < 0 ? 0 : cl);
-    var cr = right.search(/[`\n\\{}\[\]"]|[.?!]["”’']?(?:\s|$)/), t;
+    var cr = right.search(/[`\n\\{}\[\]"\u2460-\u2473\u2776-\u2793]|[.?!]["”’']?(?:\s|$)/), t;
     if (cr >= 0) { var ch = right.charAt(cr); t = /[.?!]/.test(ch) ? right.slice(0, cr + 1 + (/["”’']/.test(right.charAt(cr + 1)) ? 1 : 0)) : right.slice(0, cr); } else t = right;
     return okSent((left + mid + t).replace(/^[^A-Za-z“‘"'(]+/, ''));
   }
   /* 화면에 보이는 글에서 문장 뽑기 (태그로 쪼개져 있어도 됨) */
   function domSentences() {
-    var t = ''; try { t = document.body.innerText || ''; } catch (e) { }
+    var t = ''; try { t = (document.body.innerText || '').replace(/[\u2460-\u2473\u2776-\u2793]/g, '\n'); } catch (e) { }
     var out = [];
     t.split(/\n+/).forEach(function (line) {
       line = line.replace(/^[^A-Za-z“‘"'(]+/, '').trim(); if (!line) return;
@@ -835,6 +834,92 @@
     var src = docSrc();
     while ((m = g.exec(src)) && out.length < n && guard++ < 40000) { var s = sentAround(src, m.index, m.index + m[0].length); if (s) add(s); }
     return out;
+  }
+
+  /* ───── 이 문제로 가기 ───── */
+  function appDocs() {
+    var out = [document];
+    (function walk(d, n) { Array.prototype.forEach.call(d.querySelectorAll('iframe'), function (f) { try { var cd = f.contentDocument; if (cd && cd.body && n < 4) { out.push(cd); walk(cd, n + 1); } } catch (e) { } }); })(document, 0);
+    return out;
+  }
+  function nz(x) { return (x || '').replace(/[①-⑳❶-➓]/g, ' ').replace(/\s+/g, ' ').trim(); }
+  function dive(el, snip) {
+    for (var i = 0; i < el.children.length; i++) { var c = el.children[i]; if (c.id === 'ion-tools-host' || /^(SCRIPT|STYLE|TEMPLATE|NOSCRIPT)$/.test(c.tagName)) continue; if (nz(c.innerText).indexOf(snip) >= 0) return dive(c, snip); }
+    return el;
+  }
+  function findSentEl(snip) {
+    for (var i = 0; i < appDocs().length; i++) {
+      var d = appDocs()[i]; if (!d.body || nz(d.body.innerText).indexOf(snip) < 0) continue;
+      var el = dive(d.body, snip); if (el && el !== d.body) return el;
+    }
+    return null;
+  }
+  function flashEl(el, sent, re) {
+    try { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) { }
+    if (sent && re && hiWord(el, sent, re)) return;
+    var old = el.style.cssText; el.style.transition = 'background .3s'; el.style.background = '#ffe08a';
+    setTimeout(function () { el.style.cssText = old; }, 2000);
+  }
+  /* 문장 안의 해당 단어만 잠깐 노란색으로 표시 */
+  function hiWord(el, sent, re) {
+    try {
+      var d = el.ownerDocument, tw = d.createTreeWalker(el, 4, null), nodes = [], n;
+      while ((n = tw.nextNode())) { var p = n.parentNode; if (p && /^(SCRIPT|STYLE|TEMPLATE|NOSCRIPT)$/.test(p.tagName)) continue; if (p && p.closest && p.closest('#ion-tools-host')) continue; nodes.push(n); }
+      var txt = '', map = [], sp = true;
+      nodes.forEach(function (nd) {
+        var v = nd.nodeValue;
+        for (var i = 0; i < v.length; i++) {
+          var c = v.charAt(i);
+          if (/[\s\u00a0①-⑳❶-➓]/.test(c)) { if (sp) continue; txt += ' '; map.push([nd, i]); sp = true; }
+          else { txt += c; map.push([nd, i]); sp = false; }
+        }
+      });
+      var ns = nz(sent), st = txt.indexOf(ns.slice(0, 45)); if (st < 0) return false;
+      var seg = txt.slice(st, st + ns.length), g = new RegExp(re.source, 'gi'), m, hits = [];
+      while ((m = g.exec(seg)) && hits.length < 20) { hits.push([st + m.index, st + m.index + m[0].length]); if (!m[0].length) g.lastIndex++; }
+      if (!hits.length) return false;
+      var spans = [];
+      hits.reverse().forEach(function (r) {
+        var by = [];
+        for (var k = r[0]; k < r[1]; k++) { var e = map[k], f = by.filter(function (x) { return x.n === e[0]; })[0]; if (f) f.b = e[1] + 1; else by.push({ n: e[0], a: e[1], b: e[1] + 1 }); }
+        by.forEach(function (x) {
+          var t = x.n; if (x.b < t.nodeValue.length) t.splitText(x.b); var mid = x.a > 0 ? t.splitText(x.a) : t;
+          var w = d.createElement('span'); w.style.cssText = 'background:#ffe08a;border-radius:3px;box-shadow:0 0 0 2px #ffe08a;transition:background .3s';
+          mid.parentNode.insertBefore(w, mid); w.appendChild(mid); spans.push(w);
+        });
+      });
+      if (!spans.length) return false;
+      var first = spans[spans.length - 1];
+      try { first.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) { }
+      setTimeout(function () { spans.forEach(function (w) { var pa = w.parentNode; if (!pa) return; while (w.firstChild) pa.insertBefore(w.firstChild, w); pa.removeChild(w); pa.normalize(); }); }, 3500);
+      return true;
+    } catch (e) { return false; }
+  }
+  function searchInput() {
+    var ds = appDocs();
+    for (var i = 0; i < ds.length; i++) {
+      var list = ds[i].querySelectorAll('input[type=search],input[placeholder*="검색"]');
+      for (var j = 0; j < list.length; j++) if (!list[j].closest('#ion-tools-host') && list[j].offsetParent !== null) return list[j];
+    }
+    return null;
+  }
+  function fireSearch(inp, v) {
+    var win = inp.ownerDocument.defaultView, set = Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, 'value').set;
+    inp.focus(); set.call(inp, v); inp.dispatchEvent(new win.Event('input', { bubbles: true }));
+    ['keydown', 'keypress', 'keyup'].forEach(function (t) { inp.dispatchEvent(new win.KeyboardEvent(t, { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true })); });
+    inp.dispatchEvent(new win.Event('change', { bubbles: true }));
+  }
+  function goToSentence(sent, re) {
+    var norm = nz(sent), snip = norm.slice(0, 45);
+    var el = findSentEl(snip); if (el) { flashEl(el, sent, re); return; }
+    var inp = searchInput(); if (!inp) { toast('이 문제로 이동할 방법을 찾지 못했어요'); return; }
+    var m = re && re.exec(norm), tries = [norm.slice(0, 38).replace(/\s+\S*$/, '')];
+    if (m) { var a = norm.slice(0, m.index).split(' ').slice(-2).join(' '), b = norm.slice(m.index + m[0].length).split(' ').slice(0, 2).join(' '); tries.push((a + ' ' + m[0] + ' ' + b).trim()); }
+    (function step(i) {
+      if (i >= tries.length) { toast('이 문제로 이동하지 못했어요'); return; }
+      fireSearch(inp, tries[i]);
+      setTimeout(function () { var e2 = findSentEl(snip); if (e2) { flashEl(e2, sent, re); toast('검색어로 이동했어요 (검색창을 비우면 전체로 돌아가요)'); } else step(i + 1); }, 500);
+    })(0);
   }
   function hiNode(text, re) {
     var m = re.exec(text), box = h('span');
