@@ -386,8 +386,15 @@
     '@media print{.dock,.drawer,.sel,.layer{display:none!important}}'
   ].join('');
 
-  function openPanel(tab) { ui.drawer.classList.add('on'); if (tab) showTab(tab); else drawTab(true); }
-  function closePanel() { ui.drawer.classList.remove('on'); }
+  var pushed = null;
+  function pushPage(on) {
+    var de = document.documentElement;
+    if (on && !pushed && innerWidth >= 760) { pushed = { m: de.style.marginRight, t: de.style.transition }; de.style.transition = 'margin-right .15s'; de.style.marginRight = '380px'; }
+    else if (!on && pushed) { de.style.marginRight = pushed.m; var t = pushed.t; pushed = null; setTimeout(function () { de.style.transition = t; }, 200); }
+    setTimeout(function () { window.dispatchEvent(new Event('resize')); }, 180);
+  }
+  function openPanel(tab) { ui.drawer.classList.add('on'); pushPage(true); if (tab) showTab(tab); else drawTab(true); }
+  function closePanel() { ui.drawer.classList.remove('on'); pushPage(false); }
   var curTab = null;
   var TABNAME = { note: '노트', memo: '메모', phrase: '구문', word: '단어', acct: '계정' };
   function showTab(t) { curTab = t; Array.prototype.forEach.call(ui.tabs.children, function (b) { b.classList.toggle('on', b.dataset.t === t); }); drawTab(true); }

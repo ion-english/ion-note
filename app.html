@@ -1,0 +1,148 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ION 수업자료</title>
+<link rel="manifest" href="manifest.json"><meta name="theme-color" content="#1f3a5f">
+<link rel="icon" href="icon-192.png"><link rel="apple-touch-icon" href="icon-192.png">
+<style>
+*{box-sizing:border-box}html,body{height:100%;margin:0}
+body{font:15px/1.5 'Pretendard','Malgun Gothic',system-ui,sans-serif;color:#1c2333;background:#f4f6fa}
+button{font:inherit;cursor:pointer}
+#home{max-width:760px;margin:0 auto;padding:28px 18px 60px}
+.hd{display:flex;align-items:center;gap:12px;margin-bottom:18px}
+.logo{width:40px;height:40px;border-radius:11px;background:#1f3a5f;color:#fff;font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center}
+h1{font-size:20px;margin:0;flex:1}
+.btn{padding:8px 14px;border:1px solid #cfd6e2;background:#fff;border-radius:9px;color:#1c2333}
+.btn.pri{background:#1f3a5f;border-color:#1f3a5f;color:#fff;font-weight:700}
+.card{background:#fff;border:1px solid #e3e8f0;border-radius:14px;padding:16px 18px;margin-bottom:14px}
+.card h2{font-size:13px;color:#6b7690;margin:0 0 10px;font-weight:600}
+input[type=text],input[type=search],input[type=password]{width:100%;padding:10px 12px;border:1px solid #cfd6e2;border-radius:9px;font:inherit;background:#fff}
+label{display:block;font-size:12.5px;color:#6b7690;margin:10px 0 4px}
+.err{color:#c33;font-size:13px;margin-top:8px}
+.row{display:flex;gap:8px;align-items:center}
+.list .fo{font-size:12.5px;font-weight:700;color:#5f6f8f;padding:12px 4px 4px;cursor:pointer;user-select:none}
+.list .fi{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;cursor:pointer}
+.list .fi:hover{background:#eef2fa}.list .fi .n{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.list .fi .m{font-size:12px;color:#8a94a8}
+.empty{color:#8a94a8;padding:18px 4px;font-size:14px}
+#view{position:fixed;inset:0;display:none;flex-direction:column;background:#fff}
+#bar{height:40px;flex:none;display:flex;align-items:center;gap:10px;padding:0 10px;background:#1f3a5f;color:#fff}
+#bar button{background:#ffffff22;border:0;color:#fff;border-radius:8px;padding:5px 12px}
+#bar b{font-weight:600;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#fr{flex:1;width:100%;border:0}
+#drop{position:fixed;inset:0;background:#1f3a5fcc;color:#fff;display:none;align-items:center;justify-content:center;font-size:22px;font-weight:700;z-index:9}
+</style></head><body>
+<div id="home">
+  <div class="hd"><div class="logo">ION</div><h1>수업자료</h1><button class="btn" id="setBtn">설정</button></div>
+  <div class="card" id="setCard" style="display:none">
+    <h2>연결 설정 (한 번만)</h2>
+    <label>Supabase Project URL</label><input type="text" id="su" placeholder="https://xxxx.supabase.co">
+    <label>공개 키 (sb_publishable_… 또는 eyJ…)</label><input type="password" id="sk" placeholder="sb_publishable_...">
+    <label>ion-tools.js 주소</label><input type="text" id="ju">
+    <div class="err" id="er"></div>
+    <div class="row" style="margin-top:12px"><button class="btn pri" id="saveBtn">저장</button><span style="font-size:12.5px;color:#8a94a8">키가 없으면 비워 두면 이 기기에만 저장됩니다</span></div>
+  </div>
+  <div class="card">
+    <h2>자료 폴더</h2>
+    <div class="row"><button class="btn pri" id="pick">폴더 선택</button><button class="btn" id="reconn" style="display:none">폴더 다시 연결</button><button class="btn" id="one">파일 하나 열기</button><span id="fname" style="font-size:13px;color:#6b7690"></span></div>
+    <div style="font-size:12.5px;color:#8a94a8;margin-top:8px">HTML 파일을 이 화면에 끌어다 놓아도 열립니다.</div>
+  </div>
+  <div class="card" id="recCard" style="display:none"><h2>최근에 연 자료</h2><div class="list" id="rec"></div></div>
+  <div class="card" id="listCard" style="display:none">
+    <input type="search" id="q" placeholder="자료 검색">
+    <div class="list" id="list"></div>
+  </div>
+</div>
+<div id="view"><div id="bar"><button id="back">‹ 목록</button><b id="ttl"></b></div><iframe id="fr"></iframe></div>
+<div id="drop">여기에 놓으면 열립니다</div>
+<input type="file" id="fi" accept=".html,.htm" style="display:none">
+<script>
+var $=function(i){return document.getElementById(i)},LK='ion_app';
+var cfg={};try{cfg=JSON.parse(localStorage.getItem(LK)||'{}')}catch(e){}
+if(!cfg.su)cfg.su='https://mmiypzcqfyeawtuablfk.supabase.co';
+if(!cfg.ju)cfg.ju=new URL('ion-tools.js',location.href).href;
+var canDir=!!window.showDirectoryPicker,files=[],dirHandle=null,recents=[];
+try{recents=JSON.parse(localStorage.getItem('ion_app_rec')||'[]')}catch(e){}
+/* ---------- 설정 ---------- */
+function fillSet(){$('su').value=cfg.su||'';$('sk').value=cfg.sk||'';$('ju').value=cfg.ju||''}
+function save(){
+  var su=$('su').value.trim().replace(/\/+$/,'').replace(/\/(rest|auth)\/v1.*$/,''),sk=$('sk').value.trim(),ju=$('ju').value.trim(),er='';
+  if(/^sb_secret_/.test(sk)||/service_role/.test(sk))er='secret 키입니다. 공개용 키를 넣으세요.';
+  else if(sk&&!/^(sb_publishable_|eyJ)/.test(sk))er='공개 키 형식이 아닙니다.';
+  else if(su&&!/^https:\/\/[a-z0-9]+\.supabase\.co$/.test(su))er='Project URL은 https://….supabase.co 형태여야 합니다.';
+  $('er').textContent=er;if(er)return;
+  cfg={su:su,sk:sk,ju:ju};localStorage.setItem(LK,JSON.stringify(cfg));$('setCard').style.display='none'
+}
+$('setBtn').onclick=function(){fillSet();var c=$('setCard');c.style.display=c.style.display==='none'?'block':'none'};
+$('saveBtn').onclick=save;fillSet();
+if(!cfg.sk)$('setCard').style.display='block';
+/* ---------- 폴더 기억 (IndexedDB) ---------- */
+function idb(){return new Promise(function(r,j){var q=indexedDB.open('ion_app',1);q.onupgradeneeded=function(){q.result.createObjectStore('h')};q.onsuccess=function(){r(q.result)};q.onerror=j})}
+function hput(v){return idb().then(function(d){return new Promise(function(r){var t=d.transaction('h','readwrite');t.objectStore('h').put(v,'dir');t.oncomplete=r})})}
+function hget(){return idb().then(function(d){return new Promise(function(r){var q=d.transaction('h').objectStore('h').get('dir');q.onsuccess=function(){r(q.result)};q.onerror=function(){r()}})})}
+async function scan(h,path,out,depth){
+  for await(var e of h.values()){
+    if(e.kind==='directory'){if(depth<4&&e.name[0]!=='.'&&!/^(node_modules|_files)$/.test(e.name))await scan(e,path?path+'/'+e.name:e.name,out,depth+1)}
+    else if(/\.html?$/i.test(e.name))out.push({name:e.name,dir:path,h:e})
+  }
+}
+async function openDir(h){
+  dirHandle=h;$('fname').textContent=h.name;files=[];await scan(h,'',files,0);
+  files.sort(function(a,b){return a.dir===b.dir?a.name.localeCompare(b.name,'ko',{numeric:true}):a.dir.localeCompare(b.dir,'ko')});
+  $('reconn').style.display='none';renderList()
+}
+async function tryRestore(){
+  if(!canDir)return;var h=await hget();if(!h)return;
+  var p=await h.queryPermission({mode:'read'});
+  if(p==='granted')openDir(h);else{dirHandle=h;$('fname').textContent=h.name;$('reconn').style.display=''}
+}
+$('reconn').onclick=async function(){var p=await dirHandle.requestPermission({mode:'read'});if(p==='granted')openDir(dirHandle)};
+$('pick').onclick=async function(){
+  if(!canDir){alert('이 브라우저는 폴더 선택을 지원하지 않습니다. 크롬 또는 엣지를 사용하세요.');return}
+  try{var h=await showDirectoryPicker({mode:'read'});await hput(h);openDir(h)}catch(e){}
+};
+/* ---------- 목록 ---------- */
+var closedF={};
+function renderList(){
+  var q=$('q').value.trim().toLowerCase(),L=$('list');L.textContent='';
+  var arr=files.filter(function(f){return !q||(f.name+' '+f.dir).toLowerCase().indexOf(q)>=0});
+  $('listCard').style.display=files.length?'block':'none';
+  if(!arr.length){L.innerHTML='<div class="empty">해당하는 자료가 없습니다.</div>';return}
+  var last=null;
+  arr.forEach(function(f){
+    if(f.dir!==last){last=f.dir;var fo=document.createElement('div');fo.className='fo';var d=f.dir;fo.textContent=(closedF[d]?'▸ ':'▾ ')+(d||'(최상위)');fo.onclick=function(){closedF[d]=!closedF[d];renderList()};L.appendChild(fo)}
+    if(closedF[f.dir]&&!q)return;
+    var it=document.createElement('div');it.className='fi';it.innerHTML='<span class="n"></span>';it.firstChild.textContent=f.name.replace(/\.html?$/i,'');
+    it.onclick=function(){f.h.getFile().then(openFile)};L.appendChild(it)
+  })
+}
+$('q').oninput=renderList;
+function renderRec(){
+  $('recCard').style.display=recents.length?'block':'none';var R=$('rec');R.textContent='';
+  recents.slice(0,6).forEach(function(n){var it=document.createElement('div');it.className='fi';it.innerHTML='<span class="n"></span>';it.firstChild.textContent=n;
+    it.onclick=function(){var f=files.filter(function(x){return x.name===n})[0];if(f)f.h.getFile().then(openFile);else alert('폴더를 먼저 연결하세요.')};R.appendChild(it)})
+}
+/* ---------- 열기 (ION 자동 주입) ---------- */
+function docName(n){return n.replace(/\.html?$/i,'').replace(/\s*\(\d+\)$/,'')}
+async function openFile(file){
+  var html=await file.text(),name=docName(file.name);
+  var s='<script src="'+cfg.ju.replace(/"/g,'&quot;')+'" data-doc="'+name.replace(/"/g,'&quot;')+'"'+
+    (cfg.sk?' data-supabase-url="'+cfg.su+'" data-supabase-key="'+cfg.sk+'"':'')+'><\/script>';
+  var has=/ion-tools/i.test(html);
+  if(!has){var i=html.lastIndexOf('</body>');html=i>=0?html.slice(0,i)+s+html.slice(i):html+s}
+  $('ttl').textContent=name;$('view').style.display='flex';$('home').style.display='none';
+  $('fr').srcdoc=html;
+  recents=[file.name].concat(recents.filter(function(x){return x!==file.name})).slice(0,12);localStorage.setItem('ion_app_rec',JSON.stringify(recents));
+}
+$('back').onclick=function(){$('view').style.display='none';$('home').style.display='block';$('fr').srcdoc='';renderRec()};
+window.addEventListener('message',function(e){if(e.data==='home')$('back').click()});
+$('one').onclick=function(){$('fi').click()};
+$('fi').onchange=function(e){if(e.target.files[0])openFile(e.target.files[0]);e.target.value=''};
+/* 끌어다 놓기 */
+var dr=$('drop'),dc=0;
+addEventListener('dragenter',function(e){e.preventDefault();dc++;dr.style.display='flex'});
+addEventListener('dragleave',function(){if(--dc<=0){dc=0;dr.style.display='none'}});
+addEventListener('dragover',function(e){e.preventDefault()});
+addEventListener('drop',function(e){e.preventDefault();dc=0;dr.style.display='none';var f=e.dataTransfer.files[0];if(f&&/\.html?$/i.test(f.name))openFile(f)});
+if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(function(){});
+renderRec();tryRestore();
+</script></body></html>
