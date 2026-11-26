@@ -802,23 +802,38 @@
     var s = ''; try { s = document.documentElement.outerHTML; } catch (e) { }
     SRC = { t: now, s: s }; return s;
   }
-  function sentAround(src, a, b) {
-    var left = src.slice(Math.max(0, a - 320), a), right = src.slice(b, Math.min(src.length, b + 320));
-    var cl = -1, m, rx = /[<>"`\n\\{}\[\]]|[.?!]["”’']?\s/g;
-    while ((m = rx.exec(left))) cl = m.index + m[0].length;
-    left = left.slice(cl < 0 ? 0 : cl);
-    var cr = right.search(/[<>"`\n\\{}\[\]]|[.?!]["”’']?(?:\s|$)/), t = null;
-    if (cr >= 0) { var ch = right.charAt(cr); t = /[.?!]/.test(ch) ? right.slice(0, cr + 1 + (/["”’']/.test(right.charAt(cr + 1)) ? 1 : 0)) : right.slice(0, cr); } else t = right;
-    var s = (left + src.slice(a, b) + t).replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&#39;|&apos;/g, "'").replace(/&quot;/g, '"').replace(/\s+/g, ' ').trim();
+  function okSent(s) {
+    s = s.replace(/[\ue000-\uf8ff]/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&#39;|&apos;/g, "'").replace(/&quot;/g, '"').replace(/\s+/g, ' ').trim();
     if (s.length < 20 || s.length > 320 || /[{};=<>【】]|\(\+/.test(s) || !/^[A-Z“‘"'(]/.test(s) || !/[.?!][”’"')]?$/.test(s) || s.split(' ').length < 5) return '';
     return s;
   }
+  function sentAround(src, a, b) {
+    var w = src.slice(Math.max(0, a - 420), a) + '\u0001' + src.slice(a, b) + '\u0002' + src.slice(b, Math.min(src.length, b + 420));
+    w = w.replace(/<[^>]*>/g, '').replace(/^[^<]*?>/, '').replace(/<[^>]*$/, '');
+    var p = w.indexOf('\u0001'), q = w.indexOf('\u0002'); if (p < 0 || q < 0) return '';
+    var left = w.slice(0, p), mid = w.slice(p + 1, q), right = w.slice(q + 1), cl = -1, m, rx = /[`\n\\{}\[\]"]|[.?!]["”’']?\s/g;
+    while ((m = rx.exec(left))) cl = m.index + m[0].length;
+    left = left.slice(cl < 0 ? 0 : cl);
+    var cr = right.search(/[`\n\\{}\[\]"]|[.?!]["”’']?(?:\s|$)/), t;
+    if (cr >= 0) { var ch = right.charAt(cr); t = /[.?!]/.test(ch) ? right.slice(0, cr + 1 + (/["”’']/.test(right.charAt(cr + 1)) ? 1 : 0)) : right.slice(0, cr); } else t = right;
+    return okSent((left + mid + t).replace(/^[^A-Za-z“‘"'(]+/, ''));
+  }
+  /* 화면에 보이는 글에서 문장 뽑기 (태그로 쪼개져 있어도 됨) */
+  function domSentences() {
+    var t = ''; try { t = document.body.innerText || ''; } catch (e) { }
+    var out = [];
+    t.split(/\n+/).forEach(function (line) {
+      line = line.replace(/^[^A-Za-z“‘"'(]+/, '').trim(); if (!line) return;
+      line.split(/(?<=[.?!][”’"')]?)\s+(?=[A-Z“‘"'(])/).forEach(function (x) { var o = okSent(x); if (o) out.push(o); });
+    });
+    return out;
+  }
   function examples(key, n) {
-    var src = docSrc(), re = wordRe(key), g = new RegExp(re.source, 'gi'), out = [], seen = {}, m, guard = 0;
-    while ((m = g.exec(src)) && out.length < n && guard++ < 40000) {
-      var s = sentAround(src, m.index, m.index + m[0].length); if (!s) continue;
-      var k = s.toLowerCase(); if (seen[k]) continue; seen[k] = 1; out.push({ s: s, re: re });
-    }
+    var re = wordRe(key), g = new RegExp(re.source, 'gi'), out = [], seen = {}, m, guard = 0;
+    var add = function (s) { var k = s.toLowerCase().replace(/[^a-z]/g, ''); if (seen[k]) return; seen[k] = 1; out.push({ s: s, re: re }); };
+    domSentences().forEach(function (s) { if (out.length < n && re.test(s)) add(s); });
+    var src = docSrc();
+    while ((m = g.exec(src)) && out.length < n && guard++ < 40000) { var s = sentAround(src, m.index, m.index + m[0].length); if (s) add(s); }
     return out;
   }
   function hiNode(text, re) {
