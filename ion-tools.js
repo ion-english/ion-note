@@ -368,7 +368,7 @@
     '.body{flex:1;overflow:auto;padding:12px}',
     'textarea,input{width:100%;border:1px solid #d3d8df;border-radius:8px;padding:8px 10px;font-size:14px;color:#1d2330;background:#fff;outline:0}textarea:focus,input:focus{border-color:#2f5bff}',
     '.note{height:calc(100vh - 150px);resize:none;line-height:1.6}',
-    '.btn{border:1px solid #cdd5e0;background:#fff;border-radius:8px;padding:7px 12px;font-size:13px;cursor:pointer;color:#1d2330}.btn.pri{background:#1f3a5f;color:#fff;border-color:#1f3a5f}.btn.sm{padding:3px 8px;font-size:12px}',
+    '.btn{white-space:nowrap;border:1px solid #cdd5e0;background:#fff;border-radius:8px;padding:7px 12px;font-size:13px;cursor:pointer;color:#1d2330}.btn.pri{background:#1f3a5f;color:#fff;border-color:#1f3a5f}.btn.sm{padding:3px 8px;font-size:12px}',
     '.row{display:flex;gap:6px;align-items:center;margin-bottom:8px}',
     '.card{border:1px solid #e3e6ea;border-radius:10px;padding:9px 11px;margin-bottom:8px;background:#fafbfc}',
     '.card .t{font-size:14px;line-height:1.5;cursor:pointer}.card .m{font-size:11.5px;color:#8a93a1;margin-top:3px;display:flex;gap:8px;align-items:center}.card textarea{margin-top:6px;font-size:13px;min-height:44px}',
@@ -396,13 +396,21 @@
   function pushPage(on) {
     var de = document.documentElement;
     if (pushed) {                                   // 이전 상태 복원
+      pushed.fx.forEach(function (x) { x.el.style.right = x.r; });
       de.style.marginRight = pushed.m; de.style.overflowX = pushed.o; de.style.transition = pushed.t;
       if (pushed.f) pushed.f.style.width = pushed.fw;
       pushed = null;
     }
     if (on && innerWidth >= 760) {
       var f = fsEl(), fe = f && f !== de ? f : null;
-      pushed = { m: de.style.marginRight, o: de.style.overflowX, t: de.style.transition, f: fe, fw: fe ? fe.style.width : '' };
+      pushed = { m: de.style.marginRight, o: de.style.overflowX, t: de.style.transition, f: fe, fw: fe ? fe.style.width : '', fx: [] };
+      /* 화면 전체에 고정된 요소(통합 앱의 iframe 껍데기 등)는 margin으로 안 줄어들므로 직접 줄임 */
+      Array.prototype.forEach.call(document.querySelectorAll('body > *, body > * > *'), function (el) {
+        if (el === host || host.contains(el) || !el.getBoundingClientRect) return;
+        var cs = getComputedStyle(el); if (cs.position !== 'fixed' || cs.display === 'none') return;
+        var rc = el.getBoundingClientRect(); if (rc.width < innerWidth * 0.9 || rc.left > 2 || rc.right < innerWidth - 2) return;
+        pushed.fx.push({ el: el, r: el.style.right }); el.style.right = W + 'px';
+      });
       if (fe) fe.style.width = 'calc(100% - ' + W + 'px)';
       else { de.style.transition = 'margin-right .15s'; de.style.marginRight = W + 'px'; de.style.overflowX = 'auto'; }
     }
