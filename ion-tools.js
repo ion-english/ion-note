@@ -383,6 +383,11 @@
     '.stk textarea{border:0;background:transparent;border-radius:0 0 4px 4px;min-height:70px;resize:vertical;font-size:13px;color:#222}',
     '.toast{position:fixed;left:16px;bottom:16px;z-index:2147483003;background:#1f3a5f;color:#fff;border-radius:10px;padding:9px 12px;font-size:13px;display:none;gap:10px;align-items:center;box-shadow:0 2px 10px #0005}.toast.on{display:flex}.toast button{border:0;border-radius:6px;padding:4px 10px;cursor:pointer}',
     '.stat{font-size:13px;line-height:1.7}.stat .pill{display:inline-block;padding:1px 9px;border-radius:10px;font-size:12px;background:#eef2ff;color:#2443c9}',
+    '.fchips{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 10px}.fc{padding:4px 10px;border:1px solid #d3d8df;border-radius:999px;background:#fff;font-size:12.5px;cursor:pointer;color:#445}.fc.on{background:#1f3a5f;color:#fff;border-color:#1f3a5f}.fc small{opacity:.65;margin-left:5px}.fc.add{border-style:dashed;color:#2f5bff}',
+    '.fm{background:#f4f6fb;border-radius:8px;padding:6px 10px;margin-bottom:10px}.fm b{font-size:13px}.sp{flex:1}',
+    'select.mv{width:auto;max-width:105px;border:1px solid #d3d8df;border-radius:7px;padding:3px 4px;font-size:12px;background:#fff;color:#445}.wd select.mv{max-width:78px}',
+    '.card .sn{color:#7a8294;font-size:12.5px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.gh{font-size:12.5px;font-weight:700;color:#5f6f8f;margin:12px 2px 6px}',
+    '.note2{height:calc(100vh - 240px)}',
     '@media print{.dock,.drawer,.sel,.layer{display:none!important}}'
   ].join('');
 
@@ -423,53 +428,143 @@
     ui.body.textContent = ''; fn(ui.body);
   }
 
-  function drawNote(box) {
-    var cur = Store.get('*', 'note', 'main') || { t: '' };
-    var ta = h('textarea', { class: 'note', 'data-keep': 1, placeholder: '나의 공용 노트를 자유롭게 적으세요. 자동 저장됩니다.' });
-    ta.value = cur.t;
-    var info = h('div', { class: 'hint', text: cur.ts ? '마지막 저장 ' + fmtTime(cur.ts) : '' });
-    var save = debounce(function () { Store.put('*', 'note', 'main', { t: ta.value, ts: nowISO() }); info.textContent = '저장됨 ' + fmtTime(nowISO()); }, 600);
-    ta.addEventListener('input', save);
-    box.appendChild(ta); box.appendChild(info);
+  /* ───────── 폴더 (노트 · 구문 · 단어 탭별 독립) ───────── */
+  var fsel = pref.fs || {};
+  function selF(tab) { var v = fsel[tab]; if (v == null) return 'all'; if (v !== 'all' && v !== '' && !Store.get('*', 'folder', v)) return 'all'; return v; }
+  function setF(tab, v) { fsel[tab] = v; pref.fs = fsel; jset(K_PREF, pref); drawTab(true); }
+  function folders(tab) { return Store.list('folder', '*').filter(function (f) { return f.body.tab === tab; }).sort(function (a, b) { return a.body.name.localeCompare(b.body.name, 'ko', { numeric: true }); }); }
+  function newFolder(tab) { var n = prompt('폴더 이름'); if (!n || !n.trim()) return null; var k = uid(); Store.put('*', 'folder', k, { tab: tab, name: n.trim() }); return k; }
+  function curNewF(tab) { var s = selF(tab); return s && s !== 'all' ? s : ''; }
+  function fBody(body, f) { var b = Object.assign({}, body); if (f) b.f = f; else delete b.f; return b; }
+  function fOK(tab) { var sel = selF(tab); return function (it) { return sel === 'all' || (it.body.f || '') === sel; }; }
+  function folderBar(box, tab, kind) {
+    var list = Store.list(kind), sel = selF(tab), fs = folders(tab);
+    var cnt = function (f) { return list.filter(function (it) { return (it.body.f || '') === f; }).length; };
+    var wrap = h('div', { class: 'fchips' });
+    var chip = function (v, label, n) { return h('button', { class: 'fc' + (sel === v ? ' on' : ''), onclick: function () { setF(tab, v); } }, [label, h('small', { text: String(n) })]); };
+    wrap.appendChild(chip('all', '전체', list.length));
+    fs.forEach(function (f) { wrap.appendChild(chip(f.k, '📁 ' + f.body.name, cnt(f.k))); });
+    wrap.appendChild(chip('', '미분류', cnt('')));
+    wrap.appendChild(h('button', { class: 'fc add', text: '+ 폴더', onclick: function () { var k = newFolder(tab); if (k) setF(tab, k); } }));
+    box.appendChild(wrap);
+    if (sel && sel !== 'all') {
+      var f = Store.get('*', 'folder', sel);
+      box.appendChild(h('div', { class: 'row fm' }, [
+        h('b', { text: '📁 ' + f.name }), h('span', { class: 'sp' }),
+        h('button', { class: 'btn sm', text: '이름 변경', onclick: function () { var n = prompt('폴더 이름', f.name); if (n && n.trim()) Store.put('*', 'folder', sel, { tab: tab, name: n.trim() }); } }),
+        h('button', { class: 'btn sm', text: '폴더 삭제', onclick: function () {
+          if (!confirm('"' + f.name + '" 폴더를 삭제할까요?\n안의 항목은 지워지지 않고 미분류로 이동합니다.')) return;
+          list.forEach(function (it) { if (it.body.f === sel) Store.put(it.doc, kind, it.k, fBody(it.body, '')); });
+          Store.remove('*', 'folder', sel); fsel[tab] = 'all'; pref.fs = fsel; jset(K_PREF, pref); drawTab(true);
+        } })
+      ]));
+    }
+  }
+  function moveSel(it, kind, tab) {
+    var s = h('select', { class: 'mv', title: '폴더 이동' });
+    s.appendChild(h('option', { value: '', text: '미분류' }));
+    folders(tab).forEach(function (f) { s.appendChild(h('option', { value: f.k, text: '📁 ' + f.body.name })); });
+    s.appendChild(h('option', { value: '__new', text: '+ 새 폴더…' }));
+    s.value = it.body.f || '';
+    s.onchange = function () {
+      var v = s.value;
+      if (v === '__new') { v = newFolder(tab); if (!v) { s.value = it.body.f || ''; return; } }
+      Store.put(it.doc, kind, it.k, fBody(it.body, v));
+    };
+    return s;
   }
 
+  /* ───────── 노트 (여러 개 + 폴더) ───────── */
+  var noteOpen = null, ntQ = '';
+  function noteTitle(it) { var b = it.body; return (b.title && b.title.trim()) || (b.t || '').split('\n')[0].trim().slice(0, 40) || (it.doc !== '*' ? it.doc + ' 노트' : '(빈 노트)'); }
+  function drawNote(box) {
+    if (noteOpen) {
+      var cur = Store.list('note').filter(function (x) { return x.k === noteOpen.k && x.doc === noteOpen.doc; })[0];
+      if (cur) return drawNoteEdit(box, cur);
+      noteOpen = null;
+    }
+    var q = h('input', { placeholder: '노트 검색', value: ntQ, 'data-keep': 1, oninput: function (e) { ntQ = e.target.value; renderList(); } });
+    box.appendChild(h('div', { class: 'row' }, [q, h('button', { class: 'btn pri sm', text: '+ 새 노트', onclick: function () {
+      var k = uid(); Store.put('*', 'note', k, fBody({ t: '', title: '', ts: nowISO() }, curNewF('note'))); noteOpen = { k: k, doc: '*' }; drawTab(true);
+    } })]));
+    folderBar(box, 'note', 'note');
+    var listBox = h('div'); box.appendChild(listBox);
+    var ok = fOK('note');
+    function renderList() {
+      listBox.textContent = '';
+      var arr = Store.list('note').filter(function (it) { return !(it.k === 'main' && !(it.body.t || '').trim()); }).filter(ok)
+        .filter(function (it) { return !ntQ || (noteTitle(it) + ' ' + (it.body.t || '')).toLowerCase().indexOf(ntQ.toLowerCase()) >= 0; })
+        .sort(function (a, b) { return a.ts < b.ts ? 1 : -1; });
+      if (!arr.length) { listBox.appendChild(h('div', { class: 'empty', text: '노트가 없습니다. "+ 새 노트"로 만들어 보세요.' })); return; }
+      arr.forEach(function (it) {
+        listBox.appendChild(h('div', { class: 'card' }, [
+          h('div', { class: 't', onclick: function () { noteOpen = { k: it.k, doc: it.doc }; drawTab(true); } }, [h('b', { text: noteTitle(it) }), h('div', { class: 'sn', text: (it.body.t || '').replace(/\s+/g, ' ').slice(0, 90) })]),
+          h('div', { class: 'm' }, [h('span', { text: fmtTime(it.ts) }), h('span', { class: 'sp' }), moveSel(it, 'note', 'note'),
+            h('button', { class: 'del', text: '삭제', onclick: function () { if (confirm('이 노트를 지울까요?')) Store.remove(it.doc, 'note', it.k); } })])
+        ]));
+      });
+    }
+    renderList();
+  }
+  function drawNoteEdit(box, it) {
+    var ti = h('input', { placeholder: '제목', 'data-keep': 1 }); ti.value = it.body.title || '';
+    var ta = h('textarea', { class: 'note note2', 'data-keep': 1, placeholder: '자유롭게 적으세요. 자동 저장됩니다.' }); ta.value = it.body.t || '';
+    var info = h('div', { class: 'hint', text: it.body.ts ? '마지막 저장 ' + fmtTime(it.body.ts) : '' });
+    var save = debounce(function () {
+      var b = Store.get(it.doc, 'note', it.k) || {};
+      Store.put(it.doc, 'note', it.k, Object.assign({}, b, { t: ta.value, title: ti.value, ts: nowISO() })); info.textContent = '저장됨 ' + fmtTime(nowISO());
+    }, 600);
+    ti.addEventListener('input', save); ta.addEventListener('input', save);
+    box.appendChild(h('div', { class: 'row' }, [h('button', { class: 'btn sm', text: '‹ 목록', onclick: function () { noteOpen = null; drawTab(true); } }), h('span', { class: 'sp' }), moveSel(it, 'note', 'note'),
+      h('button', { class: 'btn sm', text: '삭제', onclick: function () { if (confirm('이 노트를 지울까요?')) { Store.remove(it.doc, 'note', it.k); noteOpen = null; } } })]));
+    box.appendChild(ti); box.appendChild(h('div', { style: 'height:8px' })); box.appendChild(ta); box.appendChild(info);
+  }
+
+  /* ───────── 메모 (포스트잇) ───────── */
+  var memoScope = 'doc';
   function drawMemo(box) {
     ui.addMemoBtn = h('button', { class: 'btn pri', text: '+ 메모 붙이기', onclick: function () { setPlacing(!placing); } });
     var tog = h('button', { class: 'btn', text: pref.hideMemo ? '메모 보이기' : '메모 숨기기', onclick: function () { pref.hideMemo = !pref.hideMemo; jset(K_PREF, pref); renderStickies(); drawTab(); } });
-    box.appendChild(h('div', { class: 'row' }, [ui.addMemoBtn, tog]));
+    var sc = h('button', { class: 'btn sm', text: memoScope === 'doc' ? '이 자료만' : '전체 자료', onclick: function () { memoScope = memoScope === 'doc' ? 'all' : 'doc'; drawTab(true); } });
+    box.appendChild(h('div', { class: 'row' }, [ui.addMemoBtn, tog, sc]));
     box.appendChild(h('div', { class: 'hint', text: '붙인 메모는 머리 부분을 끌어서 옮기고, 색 점으로 색을 바꿉니다.' }));
-    var list = Store.list('memo', CFG.doc).sort(function (a, b) { return a.ts < b.ts ? 1 : -1; });
+    var list = Store.list('memo', memoScope === 'doc' ? CFG.doc : undefined).sort(function (a, b) { return a.doc === b.doc ? (a.ts < b.ts ? 1 : -1) : (a.doc === CFG.doc ? -1 : b.doc === CFG.doc ? 1 : a.doc.localeCompare(b.doc, 'ko')); });
     if (!list.length) box.appendChild(h('div', { class: 'empty', text: '아직 메모가 없습니다.' }));
+    var last = null;
     list.forEach(function (it) {
-      var card = h('div', { class: 'card' }, [
-        h('div', { class: 't', text: it.body.t || '(빈 메모)', onclick: function () { var el = stickyEls[it.k]; if (el) { closePanel(); window.scrollTo({ top: Math.max(0, el.offsetTop - 120), behavior: 'smooth' }); } } }),
-        h('div', { class: 'm' }, [h('span', { text: fmtTime(it.ts) }), h('span', { class: 'sp' }), h('button', { class: 'del', text: '삭제', onclick: function () { Store.remove(CFG.doc, 'memo', it.k); } })])
-      ]);
-      box.appendChild(card);
+      if (memoScope === 'all' && it.doc !== last) { last = it.doc; box.appendChild(h('div', { class: 'gh', text: '📄 ' + it.doc + (it.doc === CFG.doc ? ' (현재)' : '') })); }
+      var here = it.doc === CFG.doc;
+      box.appendChild(h('div', { class: 'card' }, [
+        h('div', { class: 't', text: it.body.t || '(빈 메모)', onclick: function () { var el = here && stickyEls[it.k]; if (el) { closePanel(); window.scrollTo({ top: Math.max(0, el.offsetTop - 120), behavior: 'smooth' }); } } }),
+        h('div', { class: 'm' }, [h('span', { text: fmtTime(it.ts) }), h('span', { class: 'sp' }), h('button', { class: 'del', text: '삭제', onclick: function () { Store.remove(it.doc, 'memo', it.k); } })])
+      ]));
     });
   }
 
+  /* ───────── 구문 ───────── */
   var phScope = 'doc', phQ = '';
   function drawPhrase(box) {
     var q = h('input', { placeholder: '구문 검색', value: phQ, 'data-keep': 1, oninput: function (e) { phQ = e.target.value; renderList(); } });
     var sc = h('button', { class: 'btn sm', text: phScope === 'doc' ? '이 자료만' : '전체 자료', onclick: function () { phScope = phScope === 'doc' ? 'all' : 'doc'; drawTab(); } });
     box.appendChild(h('div', { class: 'row' }, [q, sc]));
-    box.appendChild(h('div', { class: 'hint', text: '본문에서 문장을 드래그하면 나타나는 "구문 담기"로 저장합니다.' }));
+    box.appendChild(h('div', { class: 'hint', text: '본문에서 문장을 드래그하면 나타나는 "구문 담기"로 저장합니다. 선택한 폴더에 담깁니다.' }));
+    folderBar(box, 'phrase', 'phrase');
     var listBox = h('div'); box.appendChild(listBox);
+    var ok = fOK('phrase');
     function renderList() {
       listBox.textContent = '';
-      var arr = Store.list('phrase', undefined).filter(function (it) { if (phScope === 'doc' && (it.body.src || it.doc) !== CFG.doc) return false; var s = (it.body.text + ' ' + (it.body.memo || '')).toLowerCase(); return !phQ || s.indexOf(phQ.toLowerCase()) >= 0; })
+      var arr = Store.list('phrase', undefined).filter(ok).filter(function (it) { if (phScope === 'doc' && (it.body.src || it.doc) !== CFG.doc) return false; var s = (it.body.text + ' ' + (it.body.memo || '')).toLowerCase(); return !phQ || s.indexOf(phQ.toLowerCase()) >= 0; })
         .sort(function (a, b) { return a.ts < b.ts ? 1 : -1; });
       if (!arr.length) { listBox.appendChild(h('div', { class: 'empty', text: '담은 구문이 없습니다.' })); return; }
       arr.forEach(function (it) {
         var memo = h('textarea', { placeholder: '내 메모', 'data-keep': 1 }); memo.value = it.body.memo || '';
-        var sv = debounce(function () { Store.put(it.doc, 'phrase', it.k, Object.assign({}, it.body, { memo: memo.value })); }, 600);
+        var sv = debounce(function () { Store.put(it.doc, 'phrase', it.k, Object.assign({}, Store.get(it.doc, 'phrase', it.k) || it.body, { memo: memo.value })); }, 600);
         memo.addEventListener('input', sv);
         var here = (it.body.src || it.doc) === CFG.doc;
         listBox.appendChild(h('div', { class: 'card' }, [
           h('div', { class: 't', text: it.body.text, onclick: function () { if (here && jumpTo(it.body.text, it.body.ctx)) closePanel(); } }),
           memo,
-          h('div', { class: 'm' }, [h('span', { text: fmtTime(it.ts) }), h('span', { class: 'sp', text: here ? '' : (it.body.src || it.doc) }),
+          h('div', { class: 'm' }, [h('span', { text: fmtTime(it.ts) }), h('span', { class: 'sp', text: here ? '' : (it.body.src || it.doc) }), moveSel(it, 'phrase', 'phrase'),
             h('button', { class: 'del', text: '삭제', onclick: function () { if (confirm('이 구문을 지울까요?')) Store.remove(it.doc, 'phrase', it.k); } })])
         ]));
       });
@@ -477,32 +572,37 @@
     renderList();
   }
 
-  var wdQ = '', focusWord = null;
+  /* ───────── 단어 ───────── */
+  var wdQ = '', focusWord = null, focusEn = false;
   function drawWord(box) {
     var en = h('input', { placeholder: '영어', 'data-keep': 1 }), ko = h('input', { placeholder: '뜻', 'data-keep': 1 });
     var add = function () {
       var e = en.value.trim(); if (!e) return;
-      Store.put('*', 'word', e.toLowerCase(), { en: e, ko: ko.value.trim(), star: false, src: CFG.doc });
-      en.value = ko.value = ''; drawTab();
+      var old = Store.get('*', 'word', e.toLowerCase());
+      Store.put('*', 'word', e.toLowerCase(), fBody({ en: e, ko: ko.value.trim(), star: old ? old.star : false, src: CFG.doc }, old ? old.f : curNewF('word')));
+      en.value = ko.value = ''; focusEn = true; drawTab(true);
     };
     ko.addEventListener('keydown', function (e) { if (e.key === 'Enter') add(); });
     en.addEventListener('keydown', function (e) { if (e.key === 'Enter') ko.focus(); });
     box.appendChild(h('div', { class: 'row' }, [en, ko, h('button', { class: 'btn pri sm', text: '추가', onclick: add })]));
+    if (focusEn) { focusEn = false; setTimeout(function () { en.focus(); }, 30); }
     var q = h('input', { placeholder: '내 단어장 검색', value: wdQ, 'data-keep': 1, oninput: function (e) { wdQ = e.target.value; renderList(); } });
     box.appendChild(h('div', { class: 'row' }, [q]));
+    folderBar(box, 'word', 'word');
     var listBox = h('div'); box.appendChild(listBox);
+    var ok = fOK('word');
     function renderList() {
       listBox.textContent = '';
-      var arr = Store.list('word').filter(function (it) { return !wdQ || (it.body.en + ' ' + it.body.ko).toLowerCase().indexOf(wdQ.toLowerCase()) >= 0; })
+      var arr = Store.list('word').filter(ok).filter(function (it) { return !wdQ || (it.body.en + ' ' + it.body.ko).toLowerCase().indexOf(wdQ.toLowerCase()) >= 0; })
         .sort(function (a, b) { return a.ts < b.ts ? 1 : -1; });
       if (!arr.length) { listBox.appendChild(h('div', { class: 'empty', text: '단어를 추가해 보세요. 모든 자료에서 같은 단어장이 보입니다.' })); return; }
       arr.forEach(function (it) {
         var kin = h('input', { placeholder: '뜻', 'data-keep': 1 }); kin.value = it.body.ko || '';
-        var sv = debounce(function () { Store.put('*', 'word', it.k, Object.assign({}, it.body, { ko: kin.value })); }, 600);
+        var sv = debounce(function () { Store.put('*', 'word', it.k, Object.assign({}, Store.get('*', 'word', it.k) || it.body, { ko: kin.value })); }, 600);
         kin.addEventListener('input', sv);
         var st = h('button', { class: 'star' + (it.body.star ? ' on' : ''), text: '★', onclick: function () { Store.put('*', 'word', it.k, Object.assign({}, it.body, { star: !it.body.star })); } });
         listBox.appendChild(h('div', { class: 'wd' }, [
-          h('span', { class: 'en', text: it.body.en, title: '누르면 발음', onclick: function () { speak(it.body.en); } }), kin, st,
+          h('span', { class: 'en', text: it.body.en, title: '누르면 발음', onclick: function () { speak(it.body.en); } }), kin, moveSel(it, 'word', 'word'), st,
           h('button', { class: 'del', text: '×', onclick: function () { Store.remove('*', 'word', it.k); } })
         ]));
         if (focusWord === it.k) { setTimeout(function () { kin.focus(); }, 30); focusWord = null; }
@@ -583,13 +683,13 @@
     var t = ui.selText.replace(/\s+/g, ' ').trim(); if (!t) return;
     var ctx = ctxOf(ui.selText);
     var k = hash(CFG.doc + '|' + t), old = Store.get('*', 'phrase', k);
-    Store.put('*', 'phrase', k, { text: t, ctx: ctx, memo: old ? old.memo : '', src: CFG.doc });
+    Store.put('*', 'phrase', k, fBody({ text: t, ctx: ctx, memo: old ? old.memo : '', src: CFG.doc }, old ? old.f : curNewF('phrase')));
     window.getSelection().removeAllRanges(); ui.sel.classList.remove('on'); paintHL(); openPanel('phrase');
   }
   function saveWord() {
     var t = ui.selText.replace(/[^A-Za-z'\- ]/g, '').trim(); if (!t) return;
     var k = t.toLowerCase();
-    if (!Store.get('*', 'word', k)) Store.put('*', 'word', k, { en: t, ko: '', star: false, src: CFG.doc });
+    if (!Store.get('*', 'word', k)) Store.put('*', 'word', k, fBody({ en: t, ko: '', star: false, src: CFG.doc }, curNewF('word')));
     focusWord = k; window.getSelection().removeAllRanges(); ui.sel.classList.remove('on'); openPanel('word');
   }
 
