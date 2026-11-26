@@ -11,7 +11,7 @@
   var S = document.currentScript || document.querySelector('script[src*="ion-tools"]');
   var ds = (S && S.dataset) || {};
   function autoDoc() {
-    var p = decodeURIComponent((location.pathname.split('/').pop() || 'index')).replace(/\.html?$/i, '');
+    var p = decodeURIComponent((location.pathname.split('/').pop() || 'index')).replace(/\.html?$/i, '').replace(/\s*\(\d+\)$/, '');
     return p || document.title || 'doc';
   }
   var CFG = {
@@ -251,7 +251,7 @@
   var paintHL = debounce(function () {
     if (!hlOK) return;
     var rs = [];
-    Store.list('phrase', CFG.doc).forEach(function (it) { var f = findRanges(it.body.text, it.body.ctx); if (f[0]) rs.push(f[0]); });
+    Store.list('phrase').forEach(function (it) { var f = findRanges(it.body.text, it.body.ctx); if (f[0]) rs.push(f[0]); });
     CSS.highlights.set('ion-phrase', new Highlight(...rs));
   }, 250);
   function jumpTo(text, ctx) {
@@ -400,11 +400,11 @@
   }
 
   function drawNote(box) {
-    var cur = Store.get(CFG.doc, 'note', 'main') || { t: '' };
-    var ta = h('textarea', { class: 'note', 'data-keep': 1, placeholder: '이 자료의 노트를 자유롭게 적으세요. 자동 저장됩니다.' });
+    var cur = Store.get('*', 'note', 'main') || { t: '' };
+    var ta = h('textarea', { class: 'note', 'data-keep': 1, placeholder: '나의 공용 노트를 자유롭게 적으세요. 자동 저장됩니다.' });
     ta.value = cur.t;
     var info = h('div', { class: 'hint', text: cur.ts ? '마지막 저장 ' + fmtTime(cur.ts) : '' });
-    var save = debounce(function () { Store.put(CFG.doc, 'note', 'main', { t: ta.value, ts: nowISO() }); info.textContent = '저장됨 ' + fmtTime(nowISO()); }, 600);
+    var save = debounce(function () { Store.put('*', 'note', 'main', { t: ta.value, ts: nowISO() }); info.textContent = '저장됨 ' + fmtTime(nowISO()); }, 600);
     ta.addEventListener('input', save);
     box.appendChild(ta); box.appendChild(info);
   }
@@ -434,18 +434,18 @@
     var listBox = h('div'); box.appendChild(listBox);
     function renderList() {
       listBox.textContent = '';
-      var arr = Store.list('phrase', phScope === 'doc' ? CFG.doc : undefined).filter(function (it) { var s = (it.body.text + ' ' + (it.body.memo || '')).toLowerCase(); return !phQ || s.indexOf(phQ.toLowerCase()) >= 0; })
+      var arr = Store.list('phrase', undefined).filter(function (it) { if (phScope === 'doc' && (it.body.src || it.doc) !== CFG.doc) return false; var s = (it.body.text + ' ' + (it.body.memo || '')).toLowerCase(); return !phQ || s.indexOf(phQ.toLowerCase()) >= 0; })
         .sort(function (a, b) { return a.ts < b.ts ? 1 : -1; });
       if (!arr.length) { listBox.appendChild(h('div', { class: 'empty', text: '담은 구문이 없습니다.' })); return; }
       arr.forEach(function (it) {
         var memo = h('textarea', { placeholder: '내 메모', 'data-keep': 1 }); memo.value = it.body.memo || '';
         var sv = debounce(function () { Store.put(it.doc, 'phrase', it.k, Object.assign({}, it.body, { memo: memo.value })); }, 600);
         memo.addEventListener('input', sv);
-        var here = it.doc === CFG.doc;
+        var here = (it.body.src || it.doc) === CFG.doc;
         listBox.appendChild(h('div', { class: 'card' }, [
           h('div', { class: 't', text: it.body.text, onclick: function () { if (here && jumpTo(it.body.text, it.body.ctx)) closePanel(); } }),
           memo,
-          h('div', { class: 'm' }, [h('span', { text: fmtTime(it.ts) }), h('span', { class: 'sp', text: here ? '' : it.doc }),
+          h('div', { class: 'm' }, [h('span', { text: fmtTime(it.ts) }), h('span', { class: 'sp', text: here ? '' : (it.body.src || it.doc) }),
             h('button', { class: 'del', text: '삭제', onclick: function () { if (confirm('이 구문을 지울까요?')) Store.remove(it.doc, 'phrase', it.k); } })])
         ]));
       });
@@ -558,8 +558,8 @@
   function savePhrase() {
     var t = ui.selText.replace(/\s+/g, ' ').trim(); if (!t) return;
     var ctx = ctxOf(ui.selText);
-    var k = hash(CFG.doc + '|' + t), old = Store.get(CFG.doc, 'phrase', k);
-    Store.put(CFG.doc, 'phrase', k, { text: t, ctx: ctx, memo: old ? old.memo : '' });
+    var k = hash(CFG.doc + '|' + t), old = Store.get('*', 'phrase', k);
+    Store.put('*', 'phrase', k, { text: t, ctx: ctx, memo: old ? old.memo : '', src: CFG.doc });
     window.getSelection().removeAllRanges(); ui.sel.classList.remove('on'); paintHL(); openPanel('phrase');
   }
   function saveWord() {
