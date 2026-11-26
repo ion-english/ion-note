@@ -392,34 +392,43 @@
   ].join('');
 
   var pushed = null, W = 380;
-  function fsEl() { return document.fullscreenElement || document.webkitFullscreenElement || null; }
+  /* 전체화면 요소 찾기 — 같은 출처 iframe 안쪽까지 따라 들어감 */
+  function fsCtx() {
+    var d = document, el = d.fullscreenElement || d.webkitFullscreenElement || null, n = 0;
+    while (el && el.tagName === 'IFRAME' && n++ < 4) {
+      var cd; try { cd = el.contentDocument; } catch (e) { cd = null; }
+      var ie = cd && (cd.fullscreenElement || cd.webkitFullscreenElement);
+      if (!ie) break; d = cd; el = ie;
+    }
+    return { doc: d, el: el };
+  }
   function pushPage(on) {
-    var de = document.documentElement;
     if (pushed) {                                   // 이전 상태 복원
       pushed.fx.forEach(function (x) { x.el.style.right = x.r; });
-      de.style.marginRight = pushed.m; de.style.overflowX = pushed.o; de.style.transition = pushed.t;
+      var pd = pushed.doc.documentElement;
+      pd.style.marginRight = pushed.m; pd.style.overflowX = pushed.o; pd.style.transition = pushed.t;
       if (pushed.f) pushed.f.style.width = pushed.fw;
       pushed = null;
     }
-    if (on && innerWidth >= 760) {
-      var f = fsEl(), fe = f && f !== de ? f : null;
-      pushed = { m: de.style.marginRight, o: de.style.overflowX, t: de.style.transition, f: fe, fw: fe ? fe.style.width : '', fx: [] };
-      /* 화면 전체에 고정된 요소(통합 앱의 iframe 껍데기 등)는 margin으로 안 줄어들므로 직접 줄임 */
-      Array.prototype.forEach.call(document.querySelectorAll('body > *, body > * > *'), function (el) {
+    var c = fsCtx(), d = c.doc, de = d.documentElement, win = d.defaultView || window;
+    if (on && win.innerWidth >= 760) {
+      var fe = c.el && c.el !== de && c.el !== d.body ? c.el : null;
+      pushed = { doc: d, m: de.style.marginRight, o: de.style.overflowX, t: de.style.transition, f: fe, fw: fe ? fe.style.width : '', fx: [] };
+      Array.prototype.forEach.call(d.querySelectorAll('body > *, body > * > *'), function (el) {
         if (el === host || host.contains(el) || !el.getBoundingClientRect) return;
-        var cs = getComputedStyle(el); if (cs.position !== 'fixed' || cs.display === 'none') return;
-        var rc = el.getBoundingClientRect(); if (rc.width < innerWidth * 0.9 || rc.left > 2 || rc.right < innerWidth - 2) return;
+        var cs = win.getComputedStyle(el); if (cs.position !== 'fixed' || cs.display === 'none') return;
+        var rc = el.getBoundingClientRect(); if (rc.width < win.innerWidth * 0.9 || rc.left > 2 || rc.right < win.innerWidth - 2) return;
         pushed.fx.push({ el: el, r: el.style.right }); el.style.right = W + 'px';
       });
       if (fe) fe.style.width = 'calc(100% - ' + W + 'px)';
       else { de.style.transition = 'margin-right .15s'; de.style.marginRight = W + 'px'; de.style.overflowX = 'auto'; }
     }
-    setTimeout(function () { window.dispatchEvent(new Event('resize')); }, 180);
+    setTimeout(function () { window.dispatchEvent(new Event('resize')); try { win.dispatchEvent(new Event('resize')); } catch (e) { } }, 180);
   }
-  /* 전체화면: 전체화면 요소 안으로 도구를 옮겨야 보임 */
+  /* 전체화면: 전체화면이 된 문서 안으로 도구를 옮겨야 보임 */
   function onFS() {
-    var f = fsEl(), tgt = f && f !== document.documentElement && f !== document.body ? f : document.body;
-    if (host.parentNode !== tgt) tgt.appendChild(host);
+    var c = fsCtx(), tgt = c.el && c.el !== c.doc.documentElement && c.el !== c.doc.body ? c.el : c.doc.body;
+    if (host.parentNode !== tgt) { try { tgt.appendChild(host); } catch (e) { } }
     if (ui.drawer.classList.contains('on')) pushPage(true);
   }
   document.addEventListener('fullscreenchange', onFS); document.addEventListener('webkitfullscreenchange', onFS);
