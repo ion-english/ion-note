@@ -16,7 +16,6 @@
   }
   var CFG = {
     wordsUrl: ds.wordsUrl || (S && S.src ? new URL('ion-words.json', S.src).href : ''),
-    sentsUrl: ds.sentsUrl || (S && S.src ? new URL('ion-sents.json', S.src).href : ''),
     doc: ds.doc || autoDoc(),
     url: (ds.supabaseUrl || '').replace(/\/+$/, ''),
     key: ds.supabaseKey || '',
@@ -391,7 +390,7 @@
     '.card .sn{color:#7a8294;font-size:12.5px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.gh{font-size:12.5px;font-weight:700;color:#5f6f8f;margin:12px 2px 6px}',
     '.note2{height:calc(100vh - 240px)}',
     '.seg{display:flex;background:#eef1f6;border-radius:9px;padding:3px;margin-bottom:10px}.seg button{flex:1;border:0;background:none;padding:6px 0;border-radius:7px;font-size:13px;cursor:pointer;color:#6b7480}.seg button.on{background:#fff;color:#1f3a5f;font-weight:700;box-shadow:0 1px 3px #0002}',
-    '.dr{border-bottom:1px solid #eef0f3}.dh{display:flex;align-items:center;gap:8px;padding:8px 2px;cursor:pointer}.dh .en{font-family:Georgia,serif;font-weight:700;font-size:15px;min-width:84px}.dh .dk{flex:1;font-size:13px;color:#445}.dr .ch{padding:0 2px 6px}.dr .ex{font-family:Georgia,serif;font-size:13.5px;line-height:1.55;padding:6px 8px;margin:0 0 6px;background:#f6f8fb;border-radius:8px}.dr .ex .xs{font-family:system-ui,sans-serif;font-size:11px;color:#8a94a8;margin-top:2px}.hl{background:#fde58a;font-weight:700}',
+    '.dr{border-bottom:1px solid #eef0f3}.dh{display:flex;align-items:center;gap:8px;padding:8px 2px;cursor:pointer}.dh .en{font-family:Georgia,serif;font-weight:700;font-size:15px;min-width:84px}.dh .dk{flex:1;font-size:13px;color:#445}.dr .ch{padding:0 2px 6px;margin-top:-2px}.c.more{background:#e3e8f2}.dr .ex{font-family:Georgia,serif;font-size:13.5px;line-height:1.55;padding:6px 8px;margin:0 0 6px;background:#f6f8fb;border-radius:8px}.dr .ex .xs{font-family:system-ui,sans-serif;font-size:11px;color:#8a94a8;margin-top:2px}.hl{background:#fde58a;font-weight:700}',
     '.c{display:inline-block;font-size:11px;background:#eef2f8;color:#5f6f8f;border-radius:999px;padding:1px 8px;margin:0 4px 4px 0}',
     '.tip{position:fixed;z-index:2147483002;display:none;width:260px;background:#fff;border:1px solid #d3d8df;border-radius:12px;padding:10px 12px;box-shadow:0 6px 22px #0003;font-size:13px;color:#1d2330}.tip.on{display:block}.tip .w{font-weight:700;font-size:16px;font-family:Georgia,serif;cursor:pointer}.tip .w small{font-weight:400;font-size:11px;color:#8a94a8;font-family:system-ui}.tip .k{margin:2px 0 6px;font-size:14px}.tip .tb{display:flex;gap:6px;margin-top:6px}',
     '.msg{position:fixed;left:50%;bottom:70px;transform:translateX(-50%);z-index:2147483003;background:#1f3a5f;color:#fff;font-size:13px;padding:7px 14px;border-radius:999px;display:none}.msg.on{display:block}',
@@ -663,7 +662,7 @@
   function drawDict(box) {
     var q = h('input', { placeholder: '영어 또는 한글로 검색 (예: abandon, 포기)', value: dQ, 'data-keep': 1, oninput: function (e) { dQ = e.target.value; dOpen = null; renderList(); } });
     box.appendChild(h('div', { class: 'row' }, [q]));
-    box.appendChild(h('div', { class: 'hint', text: DICT ? '단어장 ' + DICT.b.length + '권 · ' + KEYS.length + '개 단어. 단어를 누르면 예문이 나옵니다.' : '사전을 불러오는 중…' }));
+    box.appendChild(h('div', { class: 'hint', text: DICT ? '단어장 ' + DICT.b.length + '권 · ' + KEYS.length + '개 단어. 단어를 누르면 지금 열린 파일에서 쓰인 예문을 찾아 줍니다.' : '사전을 불러오는 중…' }));
     var listBox = h('div'); box.appendChild(listBox);
     function renderList() {
       listBox.textContent = '';
@@ -674,24 +673,27 @@
       keys.forEach(function (k) {
         var ent = DICT.w[k], mine = !!Store.get('*', 'word', k), open = dOpen === k;
         var row = h('div', { class: 'dr' + (open ? ' open' : '') }, [
-          h('div', { class: 'dh', onclick: function () { dOpen = open ? null : k; if (!open) ensureSents().then(function () { renderList(); }); renderList(); } }, [
+          h('div', { class: 'dh', onclick: function () { dOpen = open ? null : k; renderList(); } }, [
             h('span', { class: 'en', text: k, onclick: function (e) { e.stopPropagation(); speak(k); }, title: '누르면 발음' }),
             h('span', { class: 'dk', text: koOf(ent) }),
             h('button', { class: 'btn sm' + (mine ? '' : ' pri'), text: mine ? '담음' : '+ 담기', onclick: function (e) { e.stopPropagation(); if (!mine) { addFromDict(k, ent, false); renderList(); } } })
           ])
         ]);
+        var all = srcChips(ent, 200);
+        if (!open) { var cl = h('div', { class: 'ch' }); all.slice(0, 2).forEach(function (c) { cl.appendChild(h('span', { class: 'c', text: c })); }); if (all.length > 2) cl.appendChild(h('span', { class: 'c more', text: '+' + (all.length - 2) })); row.appendChild(cl); }
         if (open) {
-          var chips = h('div', { class: 'ch' }); srcChips(ent, 8).forEach(function (c) { chips.appendChild(h('span', { class: 'c', text: c })); }); row.appendChild(chips);
-          var ex = examples(k, 5);
-          if (!SENTS) row.appendChild(h('div', { class: 'hint', text: '예문을 불러오는 중…' }));
-          else if (!ex.length) row.appendChild(h('div', { class: 'hint', text: '기출 예문이 없습니다.' }));
-          else ex.forEach(function (x) { row.appendChild(h('div', { class: 'ex' }, [hiNode(x.s, x.re), h('div', { class: 'xs', text: x.src + (x.ty ? ' · ' + x.ty : '') })])); });
+          var chips = h('div', { class: 'ch' }); srcChips(ent, 30).forEach(function (c) { chips.appendChild(h('span', { class: 'c', text: c })); }); row.appendChild(chips);
+          var ex = examples(k, 1000), full = ex.length ? textIndex().full : '';
+          row.appendChild(h('div', { class: 'hint', text: ex.length ? '📄 이 파일에서 찾은 예문 ' + ex.length + (ex.length >= 1000 ? '개 이상 (처음 1000개만 표시)' : '개') : '📄 이 파일에서 찾은 예문이 없습니다.' }));
+          ex.forEach(function (x) {
+            var here = full.indexOf(x.s.slice(0, 40)) >= 0;
+            row.appendChild(h('div', { class: 'ex' }, [hiNode(x.s, x.re), here ? h('div', { class: 'xs' }, [h('a', { class: 'link', text: '본문에서 보기', onclick: function () { jumpTo(x.s.slice(0, 80), ''); } })]) : null]));
+          });
         }
         listBox.appendChild(row);
       });
     }
     renderList();
-    if (dOpen) ensureSents().then(function () { if (curTab === 'word' && wdMode === 'dict') renderList(); });
   }
   function speak(t) { try { var u = new SpeechSynthesisUtterance(t); u.lang = 'en-US'; speechSynthesis.cancel(); speechSynthesis.speak(u); } catch (e) { } }
 
@@ -743,18 +745,12 @@
   }
 
   /* ───────── 내장 단어 사전 ───────── */
-  var DICT = null, DICT_P = null, SENTS = null, SENTS_P = null, KEYS = [];
+  var DICT = null, DICT_P = null, KEYS = [];
   function ensureDict() {
     if (DICT) return Promise.resolve(DICT);
     if (!CFG.wordsUrl) return Promise.resolve(null);
     if (!DICT_P) DICT_P = fetch(CFG.wordsUrl).then(function (r) { if (!r.ok) throw 0; return r.json(); }).then(function (d) { DICT = d; KEYS = Object.keys(d.w); return d; }).catch(function () { DICT_P = null; return null; });
     return DICT_P;
-  }
-  function ensureSents() {
-    if (SENTS) return Promise.resolve(SENTS);
-    if (!CFG.sentsUrl) return Promise.resolve(null);
-    if (!SENTS_P) SENTS_P = fetch(CFG.sentsUrl).then(function (r) { if (!r.ok) throw 0; return r.json(); }).then(function (d) { SENTS = d; return d; }).catch(function () { SENTS_P = null; return null; });
-    return SENTS_P;
   }
   function cands(t) {
     t = (t || '').toLowerCase().replace(/[^a-z' \-]/g, '').replace(/\s+/g, ' ').trim();
@@ -799,10 +795,30 @@
     }
     return new RegExp('\\b(?:' + a.join('|') + ')\\b', 'i');
   }
+  /* 열려 있는 파일 자체에서 예문 찾기 (보이는 화면뿐 아니라 파일 안의 전체 내용) */
+  var SRC = null;
+  function docSrc() {
+    var now = Date.now(); if (SRC && now - SRC.t < 30000) return SRC.s;
+    var s = ''; try { s = document.documentElement.outerHTML; } catch (e) { }
+    SRC = { t: now, s: s }; return s;
+  }
+  function sentAround(src, a, b) {
+    var left = src.slice(Math.max(0, a - 320), a), right = src.slice(b, Math.min(src.length, b + 320));
+    var cl = -1, m, rx = /[<>"`\n\\{}\[\]]|[.?!]["”’']?\s/g;
+    while ((m = rx.exec(left))) cl = m.index + m[0].length;
+    left = left.slice(cl < 0 ? 0 : cl);
+    var cr = right.search(/[<>"`\n\\{}\[\]]|[.?!]["”’']?(?:\s|$)/), t = null;
+    if (cr >= 0) { var ch = right.charAt(cr); t = /[.?!]/.test(ch) ? right.slice(0, cr + 1 + (/["”’']/.test(right.charAt(cr + 1)) ? 1 : 0)) : right.slice(0, cr); } else t = right;
+    var s = (left + src.slice(a, b) + t).replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&#39;|&apos;/g, "'").replace(/&quot;/g, '"').replace(/\s+/g, ' ').trim();
+    if (s.length < 20 || s.length > 320 || /[{};=<>【】]|\(\+/.test(s) || !/^[A-Z“‘"'(]/.test(s) || !/[.?!][”’"')]?$/.test(s) || s.split(' ').length < 5) return '';
+    return s;
+  }
   function examples(key, n) {
-    if (!SENTS) return [];
-    var re = wordRe(key), out = [];
-    for (var i = 0; i < SENTS.r.length && out.length < n; i++) { var r = SENTS.r[i]; if (re.test(r[4])) out.push({ s: r[4], src: SENTS.ex[r[1]] + ' ' + r[2] + '번', ty: SENTS.ty[r[3]] || '', re: re }); }
+    var src = docSrc(), re = wordRe(key), g = new RegExp(re.source, 'gi'), out = [], seen = {}, m, guard = 0;
+    while ((m = g.exec(src)) && out.length < n && guard++ < 40000) {
+      var s = sentAround(src, m.index, m.index + m[0].length); if (!s) continue;
+      var k = s.toLowerCase(); if (seen[k]) continue; seen[k] = 1; out.push({ s: s, re: re });
+    }
     return out;
   }
   function hiNode(text, re) {
