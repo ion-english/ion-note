@@ -387,6 +387,7 @@
     '.toast{position:fixed;left:16px;bottom:16px;z-index:2147483003;background:#1f3a5f;color:#fff;border-radius:10px;padding:9px 12px;font-size:13px;display:none;gap:10px;align-items:center;box-shadow:0 2px 10px #0005}.toast.on{display:flex}.toast button{border:0;border-radius:6px;padding:4px 10px;cursor:pointer}',
     '.stat{font-size:13px;line-height:1.7}.stat .pill{display:inline-block;padding:1px 9px;border-radius:10px;font-size:12px;background:#eef2ff;color:#2443c9}',
     '.fchips{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 10px}.fc{padding:4px 10px;border:1px solid #d3d8df;border-radius:999px;background:#fff;font-size:12.5px;cursor:pointer;color:#445}.fc.on{background:#1f3a5f;color:#fff;border-color:#1f3a5f}.fc small{opacity:.65;margin-left:5px}.fc.add{border-style:dashed;color:#2f5bff}',
+    '.ftr{border:1px solid #e3e7ee;border-radius:10px;padding:4px;margin:4px 0 8px;max-height:260px;overflow:auto;background:#fff}.ft{display:flex;align-items:center;gap:4px;padding:5px 8px 5px 6px;border-radius:7px;font-size:13px;color:#334;cursor:pointer}.ft:hover{background:#f3f5f9}.ft.on{background:#e4ebf7;font-weight:700}.ft.dov{outline:2px dashed #1f3a5f;outline-offset:-2px}.ft .cr{width:16px;text-align:center;color:#7a859b;font-size:11px;flex:none}.ft .fn{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ft small{color:#8a94a8;font-size:11px}',
     '.fm{background:#f4f6fb;border-radius:8px;padding:6px 10px;margin-bottom:10px}.fm b{font-size:13px}.sp{flex:1}',
     'select.mv{width:auto;max-width:105px;border:1px solid #d3d8df;border-radius:7px;padding:3px 4px;font-size:12px;background:#fff;color:#445}.wd select.mv{max-width:78px}',
     '.card .sn{color:#7a8294;font-size:12.5px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.gh{font-size:12.5px;font-weight:700;color:#5f6f8f;margin:12px 2px 6px}',
@@ -464,29 +465,71 @@
   function selF(tab) { var v = fsel[tab]; if (v == null) return 'all'; if (v !== 'all' && v !== '' && !Store.get('*', 'folder', v)) return 'all'; return v; }
   function setF(tab, v) { fsel[tab] = v; pref.fs = fsel; jset(K_PREF, pref); drawTab(true); }
   function folders(tab) { return Store.list('folder', '*').filter(function (f) { return f.body.tab === tab; }).sort(function (a, b) { return a.body.name.localeCompare(b.body.name, 'ko', { numeric: true }); }); }
-  function newFolder(tab) { var n = prompt('폴더 이름'); if (!n || !n.trim()) return null; var k = uid(); Store.put('*', 'folder', k, { tab: tab, name: n.trim() }); return k; }
+  function newFolder(tab, par) { var n = prompt(par ? '하위 폴더 이름' : '폴더 이름'); if (!n || !n.trim()) return null; var k = uid(); var bd = { tab: tab, name: n.trim() }; if (par) bd.p = par; Store.put('*', 'folder', k, bd); if (par) { fxs[par] = 1; pref.fx = fxs; jset(K_PREF, pref); } return k; }
+  /* 폴더 트리 (무한 중첩) */
+  var fxs = pref.fx || {};
+  function ftree(tab) {
+    var all = folders(tab), ids = {}; all.forEach(function (f) { ids[f.k] = f; });
+    var ch = {}; all.forEach(function (f) { var p = f.body.p; if (!p || !ids[p] || p === f.k) p = ''; (ch[p] = ch[p] || []).push(f); });
+    var out = [], seen = {};
+    (function walk(p, d) { (ch[p] || []).forEach(function (f) { if (seen[f.k]) return; seen[f.k] = 1; out.push({ f: f, d: d, kids: (ch[f.k] || []).length }); walk(f.k, d + 1); }); })('', 0);
+    all.forEach(function (f) { if (!seen[f.k]) { seen[f.k] = 1; out.push({ f: f, d: 0, kids: 0 }); } });
+    return { rows: out, ch: ch, ids: ids };
+  }
+  function fpar(T, k) { var p = T.ids[k] && T.ids[k].body.p; return p && T.ids[p] ? p : ''; }
+  function fdesc(T, k) { var r = [k]; (T.ch[k] || []).forEach(function (c) { r = r.concat(fdesc(T, c.k)); }); return r; }
+  function fpath(T, k) { var n = [], g = 0; while (k && T.ids[k] && g++ < 30) { n.unshift(T.ids[k].body.name); k = fpar(T, k); } return n.join(' / '); }
   function curNewF(tab) { var s = selF(tab); return s && s !== 'all' ? s : ''; }
   function fBody(body, f) { var b = Object.assign({}, body); if (f) b.f = f; else delete b.f; return b; }
   function fOK(tab) { var sel = selF(tab); return function (it) { return sel === 'all' || (it.body.f || '') === sel; }; }
   function folderBar(box, tab, kind) {
-    var list = Store.list(kind), sel = selF(tab), fs = folders(tab);
-    var cnt = function (f) { return list.filter(function (it) { return (it.body.f || '') === f; }).length; };
-    var wrap = h('div', { class: 'fchips' });
-    var chip = function (v, label, n) { return h('button', { class: 'fc' + (sel === v ? ' on' : ''), onclick: function () { setF(tab, v); } }, [label, h('small', { text: String(n) })]); };
-    wrap.appendChild(chip('all', '전체', list.length));
-    fs.forEach(function (f) { wrap.appendChild(chip(f.k, '📁 ' + f.body.name, cnt(f.k))); });
-    wrap.appendChild(chip('', '미분류', cnt('')));
-    wrap.appendChild(h('button', { class: 'fc add', text: '+ 폴더', onclick: function () { var k = newFolder(tab); if (k) setF(tab, k); } }));
-    box.appendChild(wrap);
-    if (sel && sel !== 'all') {
+    var list = Store.list(kind), sel = selF(tab), T = ftree(tab);
+    var direct = function (f) { return list.filter(function (it) { return (it.body.f || '') === f; }).length; };
+    var total = function (k) { var ids = fdesc(T, k), n = 0; ids.forEach(function (i) { n += direct(i); }); return n; };
+    var tr = h('div', { class: 'ftr' });
+    var row = function (v, label, n, d, kids, k) {
+      var open = !!fxs[k];
+      var r = h('div', { class: 'ft' + (sel === v ? ' on' : ''), style: 'padding-left:' + (6 + d * 16) + 'px', draggable: k ? 'true' : 'false' }, [
+        h('span', { class: 'cr' + (kids ? '' : ' nil'), text: kids ? (open ? '▾' : '▸') : '', onclick: function (e) { e.stopPropagation(); fxs[k] = open ? 0 : 1; pref.fx = fxs; jset(K_PREF, pref); drawTab(true); } }),
+        h('span', { class: 'fn', text: label }), h('small', { text: String(n) })]);
+      r.onclick = function () { setF(tab, v); };
+      if (k) {
+        r.ondragstart = function (e) { e.dataTransfer.setData('text/plain', k); e.dataTransfer.effectAllowed = 'move'; };
+      }
+      if (k || v === '') {
+        r.ondragover = function (e) { e.preventDefault(); r.classList.add('dov'); };
+        r.ondragleave = function () { r.classList.remove('dov'); };
+        r.ondrop = function (e) {
+          e.preventDefault(); r.classList.remove('dov'); var m = e.dataTransfer.getData('text/plain'); if (!m || !T.ids[m]) return;
+          var np = k || ''; if (np && fdesc(T, m).indexOf(np) >= 0) return;
+          var bd = { tab: tab, name: T.ids[m].body.name }; if (np) bd.p = np; Store.put('*', 'folder', m, bd);
+          if (np) { fxs[np] = 1; pref.fx = fxs; jset(K_PREF, pref); } drawTab(true);
+        };
+      }
+      return r;
+    };
+    tr.appendChild(row('all', '전체', list.length, 0, 0, ''));
+    var hide = {};
+    T.rows.forEach(function (x) {
+      var p = fpar(T, x.f.k);
+      if (p && (hide[p] || !fxs[p])) { hide[x.f.k] = 1; return; }
+      tr.appendChild(row(x.f.k, x.f.body.name, fxs[x.f.k] || !x.kids ? direct(x.f.k) : total(x.f.k), x.d, x.kids, x.f.k));
+    });
+    tr.appendChild(row('', '미분류', direct(''), 0, 0, ''));
+    box.appendChild(tr);
+    box.appendChild(h('div', { class: 'row' }, [h('button', { class: 'btn sm', text: '+ 폴더', onclick: function () { var k = newFolder(tab, ''); if (k) setF(tab, k); } })]));
+    if (sel && sel !== 'all' && sel !== '') {
       var f = Store.get('*', 'folder', sel);
       box.appendChild(h('div', { class: 'row fm' }, [
-        h('b', { text: '📁 ' + f.name }), h('span', { class: 'sp' }),
-        h('button', { class: 'btn sm', text: '이름 변경', onclick: function () { var n = prompt('폴더 이름', f.name); if (n && n.trim()) Store.put('*', 'folder', sel, { tab: tab, name: n.trim() }); } }),
-        h('button', { class: 'btn sm', text: '폴더 삭제', onclick: function () {
-          if (!confirm('"' + f.name + '" 폴더를 삭제할까요?\n안의 항목은 지워지지 않고 미분류로 이동합니다.')) return;
-          list.forEach(function (it) { if (it.body.f === sel) Store.put(it.doc, kind, it.k, fBody(it.body, '')); });
-          Store.remove('*', 'folder', sel); fsel[tab] = 'all'; pref.fs = fsel; jset(K_PREF, pref); drawTab(true);
+        h('b', { text: fpath(T, sel) }), h('span', { class: 'sp' }),
+        h('button', { class: 'btn sm', text: '+ 하위', onclick: function () { var k = newFolder(tab, sel); if (k) setF(tab, k); } }),
+        h('button', { class: 'btn sm', text: '이름', onclick: function () { var n = prompt('폴더 이름', f.name); if (n && n.trim()) { var bd = { tab: tab, name: n.trim() }; if (f.p) bd.p = f.p; Store.put('*', 'folder', sel, bd); } } }),
+        h('button', { class: 'btn sm', text: '삭제', onclick: function () {
+          if (!confirm('"' + f.name + '" 폴더를 삭제할까요?\n안의 항목과 하위 폴더는 지워지지 않고 상위 폴더(없으면 미분류)로 이동합니다.')) return;
+          var up = fpar(T, sel);
+          list.forEach(function (it) { if (it.body.f === sel) Store.put(it.doc, kind, it.k, fBody(it.body, up)); });
+          (T.ch[sel] || []).forEach(function (c) { var bd = { tab: tab, name: c.body.name }; if (up) bd.p = up; Store.put('*', 'folder', c.k, bd); });
+          Store.remove('*', 'folder', sel); fsel[tab] = up || 'all'; pref.fs = fsel; jset(K_PREF, pref); drawTab(true);
         } })
       ]));
     }
@@ -494,12 +537,12 @@
   function moveSel(it, kind, tab) {
     var s = h('select', { class: 'mv', title: '폴더 이동' });
     s.appendChild(h('option', { value: '', text: '미분류' }));
-    folders(tab).forEach(function (f) { s.appendChild(h('option', { value: f.k, text: '📁 ' + f.body.name })); });
+    var T = ftree(tab); T.rows.forEach(function (x) { s.appendChild(h('option', { value: x.f.k, text: new Array(x.d + 1).join('\u00a0\u00a0') + (x.d ? '└ ' : '') + x.f.body.name })); });
     s.appendChild(h('option', { value: '__new', text: '+ 새 폴더…' }));
     s.value = it.body.f || '';
     s.onchange = function () {
       var v = s.value;
-      if (v === '__new') { v = newFolder(tab); if (!v) { s.value = it.body.f || ''; return; } }
+      if (v === '__new') { v = newFolder(tab, ''); if (!v) { s.value = it.body.f || ''; return; } }
       Store.put(it.doc, kind, it.k, fBody(it.body, v));
     };
     return s;
