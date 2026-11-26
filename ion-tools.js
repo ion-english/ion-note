@@ -6,6 +6,7 @@
 (function () {
   'use strict';
   if (window.IonTools) return;
+  function embW() { try { return window.ION_WORDS || (window.parent && window.parent.ION_WORDS) || null; } catch (e) { return null; } }
 
   /* ───────── 설정 ───────── */
   var S = document.currentScript || document.querySelector('script[src*="ion-tools"]');
@@ -15,7 +16,7 @@
     return p || document.title || 'doc';
   }
   var CFG = {
-    wordsUrl: ds.wordsUrl || (S && S.src ? new URL('ion-words.json', S.src).href : ''),
+    wordsUrl: ds.wordsUrl || (S && S.src ? new URL('ion-words.json', S.src).href : (embW() ? 'embedded' : '')),
     doc: ds.doc || autoDoc(),
     url: (ds.supabaseUrl || '').replace(/\/+$/, ''),
     key: ds.supabaseKey || '',
@@ -389,7 +390,7 @@
     '.fm{background:#f4f6fb;border-radius:8px;padding:6px 10px;margin-bottom:10px}.fm b{font-size:13px}.sp{flex:1}',
     'select.mv{width:auto;max-width:105px;border:1px solid #d3d8df;border-radius:7px;padding:3px 4px;font-size:12px;background:#fff;color:#445}.wd select.mv{max-width:78px}',
     '.card .sn{color:#7a8294;font-size:12.5px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.gh{font-size:12.5px;font-weight:700;color:#5f6f8f;margin:12px 2px 6px}',
-    '.note2{height:calc(100vh - 240px)}',
+    '.note2{height:auto;flex:1;min-height:200px}',
     '.seg{display:flex;background:#eef1f6;border-radius:9px;padding:3px;margin-bottom:10px}.seg button{flex:1;border:0;background:none;padding:6px 0;border-radius:7px;font-size:13px;cursor:pointer;color:#6b7480}.seg button.on{background:#fff;color:#1f3a5f;font-weight:700;box-shadow:0 1px 3px #0002}',
     '.dr{border-bottom:1px solid #eef0f3}.dh{display:flex;align-items:center;gap:8px;padding:8px 2px;cursor:pointer}.dh .en{font-family:Georgia,serif;font-weight:700;font-size:15px;min-width:84px}.dh .dk{flex:1;font-size:13px;color:#445}.dr .ch{padding:0 2px 6px;margin-top:-2px}.c.more{background:#e3e8f2}.dr .ex{font-family:Georgia,serif;font-size:13.5px;line-height:1.55;padding:6px 8px;margin:0 0 6px;background:#f6f8fb;border-radius:8px}.dr .ex .xs{font-family:system-ui,sans-serif;font-size:11px;color:#8a94a8;margin-top:2px}.hl{background:#fde58a;font-weight:700}',
     '.c{display:inline-block;font-size:11px;background:#eef2f8;color:#5f6f8f;border-radius:999px;padding:1px 8px;margin:0 4px 4px 0}',
@@ -455,7 +456,7 @@
     var fn = gQ.trim() ? drawSearch : { note: drawNote, memo: drawMemo, phrase: drawPhrase, word: drawWord, acct: drawAcct }[curTab];
     var keep = root.activeElement, ks = keep && keep.dataset && keep.dataset.keep;
     if (!force && ks && ui.body.contains(keep)) return;     // 입력 중에는 다시 그리지 않음
-    ui.body.textContent = ''; fn(ui.body);
+    ui.body.textContent = ''; ui.body.style.cssText = ''; fn(ui.body);
   }
 
   /* ───────── 폴더 (노트 · 구문 · 단어 탭별 독립) ───────── */
@@ -547,7 +548,8 @@
     ti.addEventListener('input', save); ta.addEventListener('input', save);
     box.appendChild(h('div', { class: 'row' }, [h('button', { class: 'btn sm', text: '‹ 목록', onclick: function () { noteOpen = null; drawTab(true); } }), h('span', { class: 'sp' }), moveSel(it, 'note', 'note'),
       h('button', { class: 'btn sm', text: '삭제', onclick: function () { if (confirm('이 노트를 지울까요?')) { Store.remove(it.doc, 'note', it.k); noteOpen = null; } } })]));
-    box.appendChild(ti); box.appendChild(h('div', { style: 'height:8px' })); box.appendChild(ta); box.appendChild(info);
+    box.style.cssText = 'display:flex;flex-direction:column'; ti.style.flex = 'none';
+    box.appendChild(ti); box.appendChild(h('div', { style: 'height:8px;flex:none' })); box.appendChild(ta); box.appendChild(info);
   }
 
   /* ───────── 메모 (포스트잇) ───────── */
@@ -667,7 +669,7 @@
     var listBox = h('div'); box.appendChild(listBox);
     function renderList() {
       listBox.textContent = '';
-      if (!DICT) { listBox.appendChild(h('div', { class: 'empty', text: CFG.wordsUrl ? '사전을 불러오는 중이거나 불러오지 못했습니다.' : '사전 파일 주소가 설정되지 않았습니다.' })); return; }
+      if (!DICT) { listBox.appendChild(h('div', { class: 'empty', text: CFG.wordsUrl ? '사전을 불러오는 중이거나 불러오지 못했습니다.' + (DICT_ERR ? '\n[' + DICT_ERR + '] ' + CFG.wordsUrl : '') : '사전 파일 주소가 설정되지 않았습니다.', style: 'white-space:pre-wrap;word-break:break-all' })); return; }
       var keys = dictSearch(dQ);
       if (!dQ.trim()) { listBox.appendChild(h('div', { class: 'empty', text: '검색어를 입력하세요.' })); return; }
       if (!keys.length) { listBox.appendChild(h('div', { class: 'empty', text: '찾는 단어가 없습니다.' })); return; }
@@ -787,10 +789,12 @@
 
   /* ───────── 내장 단어 사전 ───────── */
   var DICT = null, DICT_P = null, KEYS = [];
+  var DICT_ERR = '';
   function ensureDict() {
     if (DICT) return Promise.resolve(DICT);
+    var EW = embW(); if (EW) { DICT = EW; KEYS = Object.keys(EW.w); return Promise.resolve(DICT); }
     if (!CFG.wordsUrl) return Promise.resolve(null);
-    if (!DICT_P) DICT_P = fetch(CFG.wordsUrl).then(function (r) { if (!r.ok) throw 0; return r.json(); }).then(function (d) { DICT = d; KEYS = Object.keys(d.w); return d; }).catch(function () { DICT_P = null; return null; });
+    if (!DICT_P) DICT_P = fetch(CFG.wordsUrl).then(function (r) { if (!r.ok) throw ('HTTP ' + r.status); return r.json(); }).then(function (d) { DICT = d; KEYS = Object.keys(d.w); return d; }).catch(function (e) { DICT_P = null; DICT_ERR = String(e && e.message || e); return null; });
     return DICT_P;
   }
   function cands(t) {
